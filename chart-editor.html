@@ -1,0 +1,2329 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shape Rhythm Chart Editor</title>
+<style>
+  :root { --bg:#101218; --panel:#1a1e28; --line:#3a4150; --beat:#818b9c; --bar:#e7edf9; --accent:#6fdcff; --cell-w:34px; --cell-h:34px; --label:86px; }
+  * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:#edf1fa; font:14px/1.35 system-ui,sans-serif; }
+  button,input,select { font:inherit; } button { color:inherit; background:#282e3c; border:1px solid #485165; border-radius:7px; cursor:pointer; padding:7px 10px; }
+  button:hover { background:#343d50; } button:disabled { opacity:.45; cursor:not-allowed; } input[type="number"] { width:74px; background:#11151e; border:1px solid #485165; color:#fff; border-radius:5px; padding:5px; }
+  .toolbar { position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 12px; background:rgba(18,22,30,.97); border-bottom:1px solid #3d4556; }
+  .toolbar .large { min-width:54px; min-height:42px; font-size:17px; font-weight:700; } .toolbar .group { display:flex; align-items:center; gap:5px; white-space:nowrap; }
+  .toolbar label { display:flex; align-items:center; gap:4px; color:#cbd3e2; } input[type="range"] { width:72px; accent-color:var(--accent); } .value { min-width:25px; color:var(--accent); text-align:right; }
+  .mode { background:#2d5770; } .mode.target { background:#67537c; } .status { margin-left:auto; color:#aab5c8; font-size:12px; }
+  main { padding:14px 12px 86px; overflow-x:auto; } .hint { color:#b3bdcd; margin:0 0 10px; }
+  .lane { display:grid; grid-template-columns:var(--label) max-content; margin:0 0 14px; } .lane-tools { display:flex; flex-direction:column; gap:8px; padding:7px 8px 0 0; }
+  .lane-content { display:flex; flex-direction:column; width:max-content; } .measure-headers { display:flex; gap:0; height:34px; } .measure-headers button { border-radius:4px 4px 0 0; padding:4px; font-size:12px; white-space:nowrap; overflow:hidden; }
+  .lane-tools b { color:#aeb9cb; text-align:center; } .lane-tools button { padding:7px 4px; font-size:12px; }
+  .grid { display:grid; position:relative; grid-template-columns:repeat(var(--cols),var(--cell-w)); grid-template-rows:repeat(4,var(--cell-h)); border:3px solid var(--bar); background:#161a23; }
+  .cell { width:var(--cell-w); height:var(--cell-h); position:relative; border-right:1px solid var(--line); border-bottom:1px solid var(--line); touch-action:manipulation; user-select:none; }
+  .cell:nth-child(4n) { border-bottom-color:var(--beat); } .cell.beat { border-right-color:var(--beat); } .cell.bar { border-right:3px solid var(--bar); }
+  .cell:hover { background:#253042; } .fill { position:absolute; z-index:2; width:var(--cell-h); height:var(--cell-h); opacity:.6; pointer-events:none; transition: opacity 0.2s, filter 0.2s; }
+  .fill.note { background:#35c6ef; } .fill.target { background:#b878e4; }
+  .fill.dimmed { opacity:.18; filter: grayscale(60%); }
+  .stack-count { position:absolute; z-index:3; display:grid; place-items:center; width:var(--cell-h); height:var(--cell-h); color:#fff; font-weight:800; font-size:15px; text-shadow:0 1px 2px #000; pointer-events:none; }
+  .playhead { position:absolute; top:0; bottom:0; width:2px; background:#ff4757; z-index:8; pointer-events:none; box-shadow:0 0 6px #ff4757; }
+  .playhead::before { content:''; position:absolute; top:-4px; left:-4px; border-left:5px solid transparent; border-right:5px solid transparent; border-top:6px solid #ff4757; }
+  footer { position:fixed; bottom:0; left:0; right:0; z-index:9; padding:12px; text-align:center; background:rgba(18,22,30,.97); border-top:1px solid #3d4556; } footer button { min-width:160px; padding:10px; }
+  dialog { color:#edf1fa; background:#1c2230; border:1px solid #59667d; border-radius:12px; width:min(560px,calc(100vw - 28px)); padding:0; box-shadow:0 20px 70px #0009; } dialog::backdrop { background:#0009; }
+  .modal-head { display:flex; justify-content:space-between; align-items:center; padding:13px 16px; border-bottom:1px solid #3d4556; } .modal-head h2 { margin:0; font-size:17px; } .modal-body { padding:16px; display:grid; gap:13px; } .field { display:grid; grid-template-columns:150px 1fr; gap:8px; align-items:center; }
+  .modal-body select { background:#11151e; border:1px solid #485165; color:#fff; padding:6px; border-radius:5px; } .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; } .muted { color:#aeb8c9; font-size:12px; } .modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:0 16px 16px; }
+  .warning { color:#ff6e6e; font-weight:700; font-size:12px; } .target-action { display:flex; justify-content:center; align-items:center; gap:12px; text-align:center; width:100%; }
+  #targetId { font-size:30px; line-height:1; color:#ff6262; letter-spacing:.04em; } #targetId.fresh { animation:idPulse 1.4s ease-in-out infinite; }
+  #targetId.slow-pulse { animation:idSlowPulse 1.25s ease-in-out 4; }
+  .placement-dialog { width:min(100vw - 30px,1100px); background:#161b25; } .placement-wrap { padding:14px; } .placement-screen { position:relative; width:100%; aspect-ratio:16/9; background:#090d13; border:1px solid #4e5d74; overflow:hidden; touch-action:none; }
+  .transform-box { position:absolute; box-sizing:border-box; box-shadow:inset 0 0 0 2px #37a8ff; transform-origin:center; touch-action:none; } .preview-target { position:absolute; inset:0; pointer-events:none; }
+  .transform-handle { position:absolute; width:48px; height:48px; border:12px solid transparent; background:#37a8ff; background-clip:content-box; border-radius:3px; z-index:2; } .transform-handle.nw{left:-24px;top:-24px}.transform-handle.ne{right:-24px;top:-24px}.transform-handle.sw{left:-24px;bottom:-24px}.transform-handle.se{right:-24px;bottom:-24px}
+  .placement-info { display:flex; gap:14px; flex-wrap:wrap; padding-top:12px; color:#d4e3f7; } .placement-info strong { color:#6fdcff; } .toast { position:fixed; z-index:99; top:18px; left:50%; transform:translateX(-50%); background:#421d25; color:#ffe7e7; border:1px solid #ff6e6e; border-radius:8px; padding:10px 16px; box-shadow:0 8px 25px #0008; }
+  .expiry-column { background:rgba(255,220,65,.38) !important; animation:flash 0.7s steps(2,end) infinite; } .expiry-saved { background:rgba(72,210,122,.38) !important; } .expiry-line { position:absolute; z-index:4; height:0; border-top:2px dashed #ffffff; pointer-events:none; } .expiry-actions { position:absolute; z-index:5; display:flex; gap:5px; transform:translate(4px,4px); }
+  .pause-blocked { background:rgba(130,140,155,.62) !important; }
+
+  /* 軌道エディターモーダル */
+  .path-dialog { width:min(100vw - 20px, 1100px); background:#161b25; }
+  .path-wrap { padding:14px; }
+  .path-toolbar { display:flex; align-items:center; gap:12px; margin-bottom:10px; background:#11151e; padding:8px 12px; border-radius:6px; border:1px solid #3a4150; }
+  .path-mode-btn { font-weight:700; padding:6px 16px; }
+  .path-mode-btn.active { background:#37a8ff; color:#fff; border-color:#6fdcff; }
+  .path-screen-container { position:relative; width:100%; aspect-ratio:16/9; background:#090d13; border:1px solid #4e5d74; overflow:hidden; touch-action:none; }
+  .path-screen-container canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .path-zoom-controls { display:flex; justify-content:flex-end; align-items:center; gap:8px; padding:10px 14px 0; }
+  #placementContextCanvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .path-zoom-controls input { width:86px; background:#11151e; border:1px solid #485165; color:#fff; border-radius:5px; padding:5px; text-align:right; }
+  .trash-btn { position:absolute; z-index:30; background:#3a181c; border:1px solid #ff4757; color:#fff; font-size:16px; padding:4px 8px; border-radius:6px; cursor:pointer; transform:translate(12px, 12px); box-shadow:0 4px 10px rgba(0,0,0,0.5); pointer-events:auto; }
+  .trash-btn:hover { background:#5e2229; }
+
+  /* ボタン拡張 & 大きさ設定オーバーレイ用スタイル */
+  .btn-full { width: 100%; justify-content: center; }
+  .btn-delete { background:#ff4757; border-color:#ff6e6e; color:#fff; }
+  .btn-delete:hover { background:#ff2e43; }
+  .scale-point { position:absolute; z-index:6; width:16px; height:16px; background:#6fdcff; border:2px solid #fff; border-radius:50%; transform:translate(-50%, -50%); cursor:pointer; }
+  .scale-box { position:absolute; z-index:7; transform:translate(-50%, -100%); margin-top:-6px; display:flex; align-items:center; background:#1c2230; border:1px solid #6fdcff; border-radius:4px; padding:2px 4px; gap:2px; box-shadow:0 2px 8px #0008; }
+  .scale-box input { width:52px; padding:2px 4px; font-size:12px; text-align:right; }
+  .scale-box span { font-size:12px; color:#fff; }
+  .scale-pace-line { position:absolute; z-index:5; height:0; border-top:2px dashed #ff6262; cursor:pointer; }
+
+  /* エフェクト設定モーダル */
+  .effect-dialog { width:min(100vw - 20px, 1100px); background:#161b25; }
+  .effect-wrap { padding:16px; display:grid; gap:16px; }
+  .effect-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .effect-pane { display:flex; flex-direction:column; gap:10px; background:#11151e; padding:12px; border-radius:8px; border:1px solid #3a4150; }
+  .effect-pane label { font-weight:700; color:#6fdcff; display:flex; justify-content:space-between; align-items:center; }
+  .effect-pane select { background:#1c2230; border:1px solid #485165; color:#fff; padding:6px; border-radius:5px; }
+  .effect-screen { position:relative; width:100%; aspect-ratio:16/9; background:#090d13; border:1px solid #3d4556; border-radius:4px; overflow:hidden; }
+  .effect-screen canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .effect-seekbar { width:100%; height:6px; accent-color:var(--accent); pointer-events:none; margin-top:6px; }
+  .fill-settings { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .fill-settings input[type="color"] { width:42px; height:34px; background:#11151e; border:1px solid #485165; border-radius:5px; }
+  .fill-settings input[type="range"] { width:140px; }
+
+  /* 譜面再現モーダル */
+  .preview-dialog { width:min(100vw - 20px, 1100px); background:#161b25; border-radius:12px; }
+  .preview-wrap { padding:14px; display:flex; flex-direction:column; gap:10px; }
+  .preview-screen-container { position:relative; width:100%; aspect-ratio:16/9; background:#090d13; border:1px solid #4e5d74; border-radius:6px; overflow:hidden; touch-action:none; }
+  .preview-screen-container canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .preview-hud { display:flex; justify-content:space-between; align-items:center; background:#11151e; padding:8px 12px; border-radius:6px; border:1px solid #3a4150; font-size:13px; font-weight:700; }
+  .preview-hud-item { display:flex; gap:6px; align-items:center; }
+  .preview-hud-item span { color:#6fdcff; }
+  .preview-controls { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+
+  @keyframes flash { 50% { background:rgba(255,220,65,.08) !important; } } @keyframes idPulse { 50% { opacity:.25; } } @keyframes idSlowPulse { 0%, 100% { opacity:1; } 50% { opacity:.2; } }
+  @media (max-width:760px) { :root { --cell-h:30px; --label:62px; } .toolbar { gap:5px; padding:6px; } .toolbar .group label span:first-child { display:none; } .status { width:100%; margin-left:0; } .lane-tools b { font-size:11px; } .effect-grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header class="toolbar">
+  <button id="playAll">▶ 最初から再生</button><button id="undo" class="large" title="やり直し">↶</button><button id="redo" class="large" title="進める">↷</button>
+  <button id="audioLoad">音声</button><input id="audioFile" type="file" accept="audio/*" hidden>
+  <button id="chartLoad">譜面</button><input id="chartFile" type="file" accept="application/json,.json" hidden><button id="save">保存</button>
+  <button id="modeGrid" class="large">16分</button><button id="editMode" class="large mode">ノーツ</button><label>小節/レーン <input id="barsPerLane" type="number" min="1" max="8" value="4"></label>
+  <div class="group"><label><span>楽曲</span><input id="musicVol" type="range" min="0" max="100" value="50"></label><output id="musicVolValue" class="value">50</output></div>
+  <div class="group"><label><span>ノーツ</span><input id="noteVol" type="range" min="0" max="100" value="50"></label><output id="noteVolValue" class="value">50</output></div>
+  <label>Offset <input id="offset" type="number" step="0.01" value="0"></label><label>BPM <input id="bpm" type="number" min="1" value="120"></label><span id="status" class="status">ノーツ設定モード</span>
+</header>
+<main><p class="hint">短くタップ：追加／削除（配置済ターゲットは確認後削除） ・ 打ち込み済みを0.5秒以上長押し：設定| 各レーン4小節</p><section id="lanes"></section></main>
+<footer><button id="addLane">＋ レーン追加（4小節）</button></footer>
+
+<dialog id="noteDialog"><div class="modal-head"><h2>ノーツ設定</h2><button data-close>×</button></div><div class="modal-body">
+  <div class="field"><label>ノーツID</label><strong id="noteId"></strong></div>
+  <div class="field"><label>紐付けターゲット</label><select id="noteTarget"></select></div>
+  <div class="field"><label>発生タイミング</label><div class="row"><button id="btnSpawnBeat" class="target-action"><span>発生タイミング設定</span> <span id="spawnBeatIcon"></span></button></div></div>
+  <div class="field"><label>軌道</label><div class="row" style="width:100%;"><button id="btnOpenPath" class="btn-full">軌道エディター <span id="pathLabel" class="muted" style="margin-left:6px;">直線（仮）</span></button></div></div>
+  <div class="field"><label>大きさ変化</label><div class="row"><button id="btnScaleSelect">譜面から選択 <span id="scaleIcon"></span></button><output id="noteEndScale" class="muted">再生時 100%</output></div></div>
+  <div class="field"><label>回転</label><div class="row"><select id="rotationDirection"><option value="right">右</option><option value="left">左</option></select><input id="rotationSpeed" type="number" value="0"> 度／拍</div></div>
+  <div class="field"><label>塗りつぶし</label><div class="fill-settings"><input id="noteFillColor" type="color" value="#111218"><input id="noteFillOpacity" type="range" min="0" max="100" value="0"><output id="noteFillValue">0%</output></div></div>
+  <div class="row"><button id="copyNote">ノーツをコピー</button><button id="pasteNote">ノーツをペースト</button><span id="noteCopyStatus" class="muted"></span></div>
+  <div class="row"><button id="addSameNote">同時ノーツを追加</button><button id="switchSameNote">同時ノーツを切替</button><button id="deleteNote" class="btn-delete">削除</button></div></div><div class="modal-foot"><button data-close>閉じる</button></div></dialog>
+
+<dialog id="targetDialog"><div class="modal-head"><h2>ターゲット設定</h2><button data-close>×</button></div><div class="modal-body">
+  <p class="muted">ターゲットの発生タイミングと形状は、グリッド位置で決まります。</p>
+  <button id="targetTransform" class="target-action"><span>表示位置・傾き・大きさを設定</span><span id="placementWarning" class="warning">⚠️配置未設定</span></button>
+  <button id="targetExpiry" class="target-action"><span>消失タイミング設定</span><span id="expiryWarning" class="warning">⚠️表示時間未設定</span></button>
+  <button id="targetEffects" class="target-action"><span>発生・消失エフェクト設定</span></button><button id="addSameTarget">同時ターゲットを追加</button><button id="switchSameTarget">ターゲットID切り替え</button><button id="deleteTarget" class="btn-delete">削除</button>
+  <div class="field"><label>塗りつぶし</label><div class="fill-settings"><input id="targetFillColor" type="color" value="#111218"><input id="targetFillOpacity" type="range" min="0" max="100" value="0"><output id="targetFillValue">0%</output></div></div>
+  <div class="row"><button id="copyTarget">ターゲットをコピー</button><button id="pasteTarget">ターゲットをペースト</button><span id="targetCopyStatus" class="muted"></span></div>
+  <div class="row">Target ID: <strong id="targetId"></strong></div></div><div class="modal-foot"><button data-close>閉じる</button></div></dialog>
+
+<dialog id="measureDialog"><div class="modal-head"><h2>小節設定</h2><button data-close>×</button></div><div class="modal-body"><div class="field"><label>小節番号</label><strong id="measureNumber"></strong></div><div class="field"><label>ノーツID</label><div id="measureNotes"></div></div><div class="field"><label>ターゲットID</label><div id="measureTargets"></div></div><div class="field"><label>通常BPM</label><strong id="measureBpm"></strong></div><div class="field"><label>拍子の分子</label><input id="measureBeats" type="number" min="1" step="1" value="4"></div><div><strong>拍ごとの個別BPM（空欄は通常BPM）</strong><div id="measureBpmRows" class="row"></div></div><p class="muted">分母は4固定です。拍子変更時は後続のタイミングを小節長に合わせて移動します。個別BPMは譜面の時間進行だけに適用します。</p></div><div class="modal-foot"><button data-close>閉じる</button><button id="saveMeasure">設定</button></div></dialog>
+<dialog id="placementDialog" class="placement-dialog"><div class="placement-wrap"><div id="placementScreen" class="placement-screen"></div><div class="placement-info"><span>X: <strong id="placementX">0</strong></span><span>Y: <strong id="placementY">0</strong></span><span>傾き: <strong id="placementAngle">0°</strong></span><span>サイズ: <strong id="placementSize">100%</strong></span></div></div><div class="modal-foot"><button id="cancelPlacement">キャンセル</button><button id="confirmPlacement">決定</button></div></dialog>
+
+<!-- 軌道エディターモーダル -->
+<dialog id="pathDialog" class="path-dialog">
+  <div class="path-wrap">
+    <div class="path-toolbar">
+      <span>操作モード:</span>
+      <button id="pathModePointer" class="path-mode-btn active">ポインタ操作</button>
+      <button id="pathModePath" class="path-mode-btn">パス編集</button>
+      <button id="pathPickEndpoint" class="path-mode-btn">終点ポインタを選択</button>
+      <button id="pathPickPause" class="path-mode-btn">一時停止ポインタを選択/編集</button>
+      <button id="pathSpeedEdit" class="path-mode-btn">スピード調整</button>
+      <span class="muted" id="pathModeDesc" style="margin-left:auto;">ポインタの追加・移動・削除を行えます。</span>
+    </div>
+    <div id="pathScreenContainer" class="path-screen-container" title="中央ボタンのドラッグで移動。Shift+ドラッグで紐付けターゲットを移動できます。">
+      <canvas id="pathCanvas"></canvas>
+      <button id="pathTrashBtn" class="trash-btn" style="display:none;" title="ポインタを削除">🗑️</button>
+    </div>
+    <div class="placement-info">
+      <span>ポインタ X: <strong id="pathPointX">-</strong></span>
+      <span>ポインタ Y: <strong id="pathPointY">-</strong></span>
+      <span id="pathControlPointInfo" style="display:none; color:#ffcc00;">特殊ポインタ X: <strong id="pathControlPointX">-</strong>, Y: <strong id="pathControlPointY">-</strong></span>
+      <span>赤白ポインタ角度: <strong id="pathAngleVal">-</strong></span>
+      <span>軌道長さ: <strong id="pathLengthVal">0.0px</strong></span>
+      <span>移動速度: <strong id="pathSpeedVal">-</strong></span>
+    </div>
+    <div class="path-zoom-controls"><label for="pathZoom">ズーム倍率</label><input id="pathZoom" type="number" min="10" max="500" step="1" value="100"> % <button id="pathZoomReset">倍率リセット</button></div>
+  </div>
+  <div class="modal-foot">
+    <button id="cancelPath">キャンセル</button>
+    <button id="confirmPath">決定</button>
+  </div>
+</dialog>
+
+<!-- 発生・消失エフェクト設定モーダル -->
+<dialog id="speedDialog" class="effect-dialog"><div class="modal-head"><h2>パス速度調整</h2><button id="speedClose">×</button></div><div class="effect-wrap"><div class="effect-grid"><div class="effect-pane"><label>速度パターン<select id="speedPattern"><option value="linear">等速</option><option value="accelerate">0から加速</option><option value="decelerate">最大速度から減速</option></select></label><div class="effect-screen"><canvas id="speedCurveCanvas"></canvas></div></div><div class="effect-pane"><label>移動シミュレーション</label><div class="effect-screen"><canvas id="speedSimCanvas"></canvas></div></div></div></div><div class="modal-foot"><button id="speedCancel">キャンセル</button><button id="speedApply">決定</button></div></dialog>
+<dialog id="scalePaceDialog" class="effect-dialog"><div class="modal-head"><h2>サイズ変化ペース調整</h2><button id="scalePaceClose">×</button></div><div class="effect-wrap"><div class="effect-grid"><div class="effect-pane"><label>変化パターン<select id="scalePacePattern"><option value="linear">直線的</option><option value="quadratic">二次関数的</option></select></label><div class="effect-screen"><canvas id="scalePaceCurve"></canvas></div></div><div class="effect-pane"><label>ノーツサイズ変化</label><div class="effect-screen"><canvas id="scalePaceSim"></canvas></div></div></div></div><div class="modal-foot"><button id="scalePaceCancel">キャンセル</button><button id="scalePaceApply">決定</button></div></dialog>
+<dialog id="effectDialog" class="effect-dialog">
+  <div class="modal-head"><h2>発生・消失エフェクト設定</h2><button id="closeEffectCross">×</button></div>
+  <div class="effect-wrap">
+    <div class="effect-grid">
+      <div class="effect-pane">
+        <label>発生エフェクト
+          <select id="spawnEffectSelect">
+            <option value="default">default</option>
+            <option value="Fade">Fade</option>
+            <option value="0%to100%">0%to100%</option>
+            <option value="Haze">Haze</option>
+            <option value="Unfold">Unfold</option>
+            <option value="Unfold-H">Unfold-H</option>
+            <option value="Shrink-Fade">Shrink-Fade</option>
+          </select>
+        </label>
+        <div class="effect-screen"><canvas id="spawnEffectCanvas"></canvas></div>
+        <input type="range" id="spawnSeekbar" class="effect-seekbar" min="0" max="100" value="0" disabled>
+      </div>
+      <div class="effect-pane">
+        <label>消失エフェクト
+          <select id="hideEffectSelect">
+            <option value="default">default</option>
+            <option value="Fade">Fade</option>
+            <option value="100%to0%">100%to0%</option>
+            <option value="Haze">Haze</option>
+            <option value="Fold">Fold</option>
+            <option value="Fold-H">Fold-H</option>
+            <option value="Spread-Fade">Spread-Fade</option>
+          </select>
+        </label>
+        <div class="effect-screen"><canvas id="hideEffectCanvas"></canvas></div>
+        <input type="range" id="hideSeekbar" class="effect-seekbar" min="0" max="100" value="0" disabled>
+      </div>
+    </div>
+  </div>
+  <div class="modal-foot">
+    <button id="cancelEffect">キャンセル</button>
+    <button id="confirmEffect">決定</button>
+  </div>
+</dialog>
+
+<!-- 譜面再現モーダル -->
+<dialog id="previewDialog" class="preview-dialog">
+  <div class="preview-wrap">
+    <div class="preview-hud">
+      <div class="preview-hud-item">ヒットターゲットID: <span id="hudTargetId">-</span></div>
+      <div class="preview-hud-item">ヒットノーツID: <span id="hudNoteId">-</span></div>
+      <div class="preview-hud-item">コンボ数: <span id="hudCombo">0</span></div>
+    </div>
+    <div id="previewScreenContainer" class="preview-screen-container">
+      <canvas id="previewCanvas"></canvas>
+    </div>
+    <div class="preview-controls">
+      <button id="prevBtnPause">一時停止</button>
+      <button id="prevBtnRestart">最初から再生</button>
+      <button id="prevBtnVisualTap">タップ判定可視化: OFF</button>
+      <button id="prevBtnAutoPlay">オートプレイON</button>
+      <button id="prevBtnClose">閉じる</button>
+    </div>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" hidden></div>
+<script>
+(() => {
+  const shapes=[['circle','●'],['triangle','▲'],['square','■'],['star','★']];
+  const rowPrefixes=['C','T','D','S'];
+
+  const state={ 
+    mode:'note', grid:16, laneCount:4, measureCount:16, barsPerLane:4, barBeats:Array(16).fill(4), measureEditing:null, notes:[], targets:[], undo:[], redo:[], selected:null, clipboard:{note:null,target:null}, music:null, playTimer:null, playStartTime:0, playStartBeat:0, playEndBeat:0, playLaneIndex:null, 
+    expiryEditing:null, expiryPending:null, spawnEditing:null, spawnPending:null, placementTemp:null, triggerPulseTargetId:null,
+    maxSeq:{ CN:0, TN:0, DN:0, SN:0, CT:0, TT:0, DT:0, ST:0 },
+    pathPoints:[], pathEndIndex:null, pathControlPoints:{}, pathTargetPlacementTemp:null, pathPausesTemp:[], pathSpeedProfilesTemp:[], endpointSelection:false, pausePointSelection:false, speedSelectMode:false, selectedSpeedSegment:-1, speedAnimId:null, speedPatternTemp:'linear', pauseRangeEditing:null, selectedPointIdx:-1, selectedControlPointIdx:-1, pathGesture:null, pathEditLayer:'pointer', pathZoom:100, pathPanX:0, pathPanY:0, // 'pointer' or 'path'
+    scaleEditing:null, scalePointsTemp:[], scalePaceIndex:-1, scalePaceTemp:'linear', scalePaceAnimId:null,
+    effectAnimId:null
+  };
+  const $=id=>document.getElementById(id), lanes=$('lanes'); let pressTimer=null, suppressClick=false,tempoCacheKey='',tempoCache=null;
+
+  function nextId(kind, row){ 
+    const p = rowPrefixes[row];
+    const key = `${p}${kind==='note'?'N':'T'}`;
+    state.maxSeq[key] = (state.maxSeq[key] || 0) + 1;
+    return `${key}${state.maxSeq[key]}`;
+  }
+
+  function syncMaxSeqs(){
+    Object.keys(state.maxSeq).forEach(k => state.maxSeq[k] = 0);
+    state.notes.forEach(n => {
+      const m = (n.id||'').match(/^([CTDS]N)(\d+)$/);
+      if(m) state.maxSeq[m[1]] = Math.max(state.maxSeq[m[1]]||0, Number(m[2]));
+    });
+    state.targets.forEach(t => {
+      const m = (t.id||'').match(/^([CTDS]T)(\d+)$/);
+      if(m) state.maxSeq[m[1]] = Math.max(state.maxSeq[m[1]]||0, Number(m[2]));
+    });
+  }
+
+  const cellsPerBeat=()=>state.grid===16?4:state.grid===24?6:8;
+  const measureCount=()=>state.measureCount||state.laneCount*4;
+  const ensureMeasures=(count=measureCount())=>{while(state.barBeats.length<count)state.barBeats.push(4);};
+  const measureStartBeat=(measure)=>{ensureMeasures(Math.max(measureCount(),measure));let beat=0;for(let i=0;i<measure;i++)beat+=state.barBeats[i]||4;return beat;};
+  const laneMeasureStart=lane=>lane*(state.barsPerLane||4);
+  const laneMeasureEnd=lane=>Math.min(measureCount(),laneMeasureStart(lane)+(state.barsPerLane||4));
+  const laneStartBeat=lane=>measureStartBeat(laneMeasureStart(lane));
+  const laneEndBeat=lane=>measureStartBeat(laneMeasureEnd(lane));
+  const laneCols=lane=>{let n=0;for(let m=laneMeasureStart(lane);m<laneMeasureEnd(lane);m++)n+=(state.barBeats[m]||4)*cellsPerBeat();return n;};
+  const measureForBeat=beat=>{let start=0,m=0;while(m<measureCount()-1&&beat>=start+(state.barBeats[m]||4)){start+=state.barBeats[m]||4;m++;}return {measure:m,start,offset:beat-start};};
+  const beatFor=(lane,col)=>{let m=laneMeasureStart(lane),end=laneMeasureEnd(lane),remaining=col,start=laneStartBeat(lane),cpb=cellsPerBeat();for(;m<end;m++){const count=(state.barBeats[m]||4)*cpb;if(remaining<count)return start+remaining/cpb;remaining-=count;start+=state.barBeats[m]||4;}return start;};
+  const laneForBeat=beat=>{for(let lane=0;lane<Math.ceil(measureCount()/(state.barsPerLane||4));lane++)if(beat<laneEndBeat(lane))return lane;return Math.max(0,Math.ceil(measureCount()/(state.barsPerLane||4))-1);};
+  const beatToPercent=(beat,start,end)=>((beat-start)/(end-start||1))*100;
+  function remapBeatAfterMeterChange(beat,changedMeasure,oldBeats,newBeats){if(beat<0)return beat;let m=0,start=0;while(m<oldBeats.length-1&&beat>=start+oldBeats[m]){start+=oldBeats[m++];}let oldStart=0,newStart=0;for(let i=0;i<m;i++){oldStart+=oldBeats[i];newStart+=newBeats[i];}return newStart+(beat-oldStart);}
+  const formatBeat=b=>Number(b.toFixed(4));
+
+  // Individual tempo is chart-time metadata. Audio playback remains at its native rate.
+  function ensureTempoMeasures(count=measureCount()){
+    if(!Array.isArray(state.measureBpms))state.measureBpms=[];
+    while(state.measureBpms.length<count)state.measureBpms.push([]);
+    state.measureBpms=state.measureBpms.map((row,i)=>Array.from({length:state.barBeats[i]||4},(_,j)=>row?.[j]??null));
+  }
+  function ensureTempoCache(){if(!Array.isArray(state.measureBpms)||state.measureBpms.length<measureCount())ensureTempoMeasures();const base=+$('bpm')?.value||120,key=`${base}|${JSON.stringify(state.barBeats)}|${JSON.stringify(state.measureBpms)}`;if(key===tempoCacheKey)return;tempoCacheKey=key;tempoCache=[];let sec=0;for(let m=0;m<measureCount();m++){const row=state.measureBpms[m]||[],beats=state.barBeats[m]||4,starts=[sec];for(let b=0;b<beats;b++){sec+=60/(Number(row[b])>0?Number(row[b]):base);starts.push(sec);}tempoCache.push({starts,beats});}}
+  function tempoAtBeat(beat){ensureTempoCache();const q=measureForBeat(Math.max(0,beat)),v=state.measureBpms[q.measure]?.[Math.floor(q.offset)];return Number(v)>0?Number(v):(+($('bpm')?.value)||120);}
+  function beatToSeconds(beat){ensureTempoCache();if(beat<=0)return beat*60/(+$('bpm').value||120);const q=measureForBeat(beat),row=tempoCache[q.measure];if(!row){const last=tempoCache.at(-1);return last.starts.at(-1)+(beat-measureStartBeat(measureCount()))*60/(+$('bpm').value||120);}const whole=Math.floor(Math.min(q.offset,row.beats)),fraction=q.offset-whole,base=row.starts[whole]??row.starts.at(-1),bpm=state.measureBpms[q.measure]?.[whole]||(+($('bpm').value)||120);return base+fraction*60/bpm;}
+  function secondsToBeat(seconds){ensureTempoCache();if(seconds<=0)return seconds*(+$('bpm').value||120)/60;for(let m=0;m<tempoCache.length;m++){const row=tempoCache[m];if(seconds<=row.starts.at(-1)){let b=0;while(b<row.beats&&seconds>row.starts[b+1])b++;const bpm=state.measureBpms[m]?.[b]||(+($('bpm').value)||120);return measureStartBeat(m)+b+(seconds-row.starts[b])*bpm/60;}}const last=tempoCache.at(-1),end=measureStartBeat(measureCount());return end+(seconds-last.starts.at(-1))*(+$('bpm').value||120)/60;}
+
+  function snapshot(){ensureTempoMeasures();return JSON.stringify({mode:state.mode,grid:state.grid,laneCount:state.laneCount,measureCount:state.measureCount,barsPerLane:state.barsPerLane,barBeats:state.barBeats,measureBpms:state.measureBpms,notes:state.notes,targets:state.targets,bpm:+$('bpm').value,offset:+$('offset').value,maxSeq:state.maxSeq}); }
+  function restore(json){ 
+    const x=JSON.parse(json); 
+    x.measureCount=x.measureCount||((x.laneCount||4)*4); x.barsPerLane=x.barsPerLane||4; x.barBeats=x.barBeats||Array(x.measureCount).fill(4); while(x.barBeats.length<x.measureCount)x.barBeats.push(4); x.measureBpms=x.measureBpms||Array.from({length:x.measureCount},()=>[]); while(x.measureBpms.length<x.measureCount)x.measureBpms.push([]); x.measureBpms=x.measureBpms.map((r,i)=>Array.from({length:x.barBeats[i]||4},(_,j)=>r?.[j]??null));
+    x.notes=(x.notes||[]).map(n=>({...n,grid:n.grid||16})); 
+    x.targets=(x.targets||[]).map(t=>({...t,grid:t.grid||16, spawnEffect:t.spawnEffect||'default', hideEffect:t.hideEffect||'default'})); 
+    Object.assign(state,x); 
+    state.maxSeq = x.maxSeq || { CN:0, TN:0, DN:0, SN:0, CT:0, TT:0, DT:0, ST:0 };
+    syncMaxSeqs();
+    state.expiryEditing=null; state.expiryPending=null; state.spawnEditing=null; state.spawnPending=null; state.scaleEditing=null;
+    $('bpm').value=x.bpm||120; $('offset').value=x.offset||0; 
+    render(); 
+  }
+
+  function commit(before){ if(before===snapshot())return; state.undo.push(before); if(state.undo.length>50)state.undo.shift(); state.redo=[]; updateUndo(); }
+  function updateUndo(){ $('undo').disabled=!state.undo.length; $('redo').disabled=!state.redo.length; }
+  function doUndo(){if(!state.undo.length)return; const now=snapshot(); state.redo.push(now); restore(state.undo.pop()); updateUndo();}
+  function doRedo(){if(!state.redo.length)return; const now=snapshot(); state.redo.push(now); restore(state.redo.pop()); updateUndo();}
+  function objectsAt(kind,lane,row,col){ const beat=beatFor(lane,col), arr=kind==='note'?state.notes:state.targets; return arr.filter(x=>x.grid===state.grid&&x.shape===shapes[row][0]&&Math.abs(x.beat-beat)<.0001); }
+  function fill(kind,obj,lane){ const row=shapes.findIndex(x=>x[0]===obj.shape), el=document.createElement('span'),start=laneStartBeat(lane),end=laneEndBeat(lane); el.className=`fill ${kind}`; if(kind!==state.mode) el.classList.add('dimmed'); el.title=kind==='note'?'ノーツ':'ターゲット'; el.style.left=`${beatToPercent(obj.beat,start,end)}%`; el.style.top=`calc(${row} * var(--cell-h))`; return el; }
+  function stackCount(shape,beat,lane,count){ const row=shapes.findIndex(x=>x[0]===shape), el=document.createElement('span'); el.className='stack-count'; el.textContent=count; el.style.left=`${beatToPercent(beat,laneStartBeat(lane),laneEndBeat(lane))}%`; el.style.top=`calc(${row} * var(--cell-h))`; return el; }
+  
+  function render(){
+    document.documentElement.style.setProperty('--cell-w',state.grid===16?'34px':state.grid===24?'22.6667px':'17px'); $('modeGrid').textContent=`${state.grid}分`; $('editMode').textContent=state.mode==='note'?'ノーツ':'ターゲット'; $('editMode').classList.toggle('target',state.mode==='target');
+    if(state.spawnEditing) $('status').textContent=`ノーツ発生タイミングを選択中：${state.spawnEditing.id}`;
+    else if(state.expiryEditing) $('status').textContent=`消失タイミングを選択中：${state.expiryEditing.id}`;
+    else if(state.scaleEditing) $('status').textContent=`大きさ倍率設定中：${state.scaleEditing.id}`;
+    else $('status').textContent=state.mode==='note'?'ノーツ設定モード：セルの時刻＝判定時刻':'ターゲット設定モード：セルの時刻＝表示開始時刻';
+    
+    state.laneCount=Math.ceil(measureCount()/(state.barsPerLane||4)); $('barsPerLane').value=state.barsPerLane;
+    $('addLane').textContent=`\uFF0B \u30EC\u30FC\u30F3\u8FFD\u52A0（${state.barsPerLane}\u5C0F\u7BC0）`;
+    lanes.replaceChildren();
+    for(let lane=0;lane<state.laneCount;lane++) {
+      const c=laneCols(lane), laneStart=laneStartBeat(lane), laneEnd=laneEndBeat(lane), laneSpan=laneEnd-laneStart;
+      const wrap=document.createElement('article'); wrap.className='lane';
+      const tools=document.createElement('aside'); tools.className='lane-tools'; tools.innerHTML=`<b>${laneMeasureStart(lane)+1}–${laneMeasureEnd(lane)}<br>小節</b>`;
+      const lp=document.createElement('button'); lp.textContent= (state.playTimer && state.playLaneIndex===lane) ? '■ 停止' : '▶ レーン再生';
+      lp.disabled=state.mode!=='note'; lp.onclick=()=>playLane(lane); tools.append(lp);
+      
+      const prevBtn=document.createElement('button'); prevBtn.textContent='譜面再現';
+      prevBtn.onclick=()=>startPreviewMode(lane); tools.append(prevBtn);
+
+      const content=document.createElement('div'); content.className='lane-content';
+      const headers=document.createElement('div');headers.className='measure-headers';
+      headers.style.width=`${c*(state.grid===16?34:state.grid===24?22.6667:17)}px`;for(let m=laneMeasureStart(lane);m<laneMeasureEnd(lane);m++){const b=document.createElement('button');b.textContent=`${m+1}小節・${state.barBeats[m]||4}/4`;b.style.flex=String((state.barBeats[m]||4)*cellsPerBeat());b.onclick=()=>openMeasureSettings(m);headers.append(b);}
+      content.append(headers);
+      const grid=document.createElement('div'); grid.className='grid'; grid.style.setProperty('--cols',c); grid.dataset.lane=lane;
+      let edge=0;const measureEdges=new Set();for(let m=laneMeasureStart(lane);m<laneMeasureEnd(lane);m++){edge+=(state.barBeats[m]||4)*cellsPerBeat();measureEdges.add(edge-1);}
+      for(let row=0;row<4;row++) for(let col=0;col<c;col++){
+        const cell=document.createElement('div');cell.className='cell';
+        if((col+1)%cellsPerBeat()===0)cell.classList.add('beat');
+        if(measureEdges.has(col))cell.classList.add('bar');
+        const cellBeat=beatFor(lane,col);
+        
+        if(state.expiryPending&&Math.abs(state.expiryPending.beat-cellBeat)<.0001)cell.classList.add('expiry-column');
+        if(state.expiryEditing&&state.expiryEditing.hideBeat!==null&&Math.abs(state.expiryEditing.hideBeat-cellBeat)<.0001)cell.classList.add('expiry-saved');
+        
+        if(state.spawnPending&&Math.abs(state.spawnPending.beat-cellBeat)<.0001)cell.classList.add('expiry-column');
+        if(state.spawnEditing&&state.spawnEditing.spawnBeat!==undefined&&Math.abs(state.spawnEditing.spawnBeat-cellBeat)<.0001)cell.classList.add('expiry-saved');
+        if(state.pauseRangeEditing&&state.pathPausesTemp.some(p=>p.pointIndex!==state.pauseRangeEditing.pointIndex&&cellBeat>=p.startBeat&&cellBeat<p.endBeat))cell.classList.add('pause-blocked');
+
+        const list=objectsAt(state.mode,lane,row,col);
+        cell.addEventListener('pointerdown',()=>{ if(state.expiryEditing||state.spawnEditing||state.scaleEditing||!list.length)return; suppressClick=false; pressTimer=setTimeout(()=>{suppressClick=true;openModal(state.mode,list[0],list,lane,row,col);},500);});
+        cell.addEventListener('pointerup',()=>clearTimeout(pressTimer));
+        cell.addEventListener('pointerleave',()=>clearTimeout(pressTimer));
+        cell.addEventListener('click',()=>{
+          if(suppressClick){suppressClick=false;return;}
+          if(state.expiryEditing){pickExpiry(lane,col);return;}
+          if(state.spawnEditing){pickSpawn(lane,col);return;}
+          if(state.pauseRangeEditing){pickPauseBeat(lane,col);return;}
+          if(state.scaleEditing){pickScalePoint(lane,col);return;}
+          toggleCell(lane,row,col,list);
+        });
+        grid.append(cell);
+      }
+      
+      const visible=[...state.notes.filter(x=>x.beat>=laneStart&&x.beat<laneEnd).map(x=>['note',x]),...state.targets.filter(x=>x.beat>=laneStart&&x.beat<laneEnd).map(x=>['target',x])];
+      visible.forEach(([kind,obj])=>grid.append(fill(kind,obj,lane)));
+      
+      const groups=new Map();
+      visible.forEach(([kind,obj])=>{ if(kind===state.mode){ const k=`${obj.shape}:${obj.beat}`; groups.set(k,(groups.get(k)||0)+1); } });
+      groups.forEach((count,k)=>{if(count>1){const [shape,beat]=k.split(':');grid.append(stackCount(shape,+beat,lane,count));}});
+      
+      if(state.expiryEditing&&state.expiryPending&&state.expiryPending.lane===lane){
+        const t=state.expiryEditing,row=shapes.findIndex(x=>x[0]===t.shape),start=beatToPercent(t.beat,laneStart,laneEnd),end=beatToPercent(state.expiryPending.beat,laneStart,laneEnd),line=document.createElement('span');
+        line.className='expiry-line';line.style.left=`${start}%`;line.style.top=`calc(${row} * var(--cell-h) + 17px)`;line.style.width=`${Math.max(0,end-start)}%`;grid.append(line);
+        const actions=document.createElement('div');actions.className='expiry-actions';actions.style.left=`${end}%`;actions.style.top='calc(4 * var(--cell-h))';actions.innerHTML='<button>決定</button><button>キャンセル</button>';
+        actions.children[0].onclick=confirmExpiry;actions.children[1].onclick=cancelExpiry;grid.append(actions);
+      }
+
+      if(state.spawnEditing&&state.spawnPending&&state.spawnPending.lane===lane){
+        const n=state.spawnEditing,row=shapes.findIndex(x=>x[0]===n.shape),end=beatToPercent(n.beat,laneStart,laneEnd),start=beatToPercent(state.spawnPending.beat,laneStart,laneEnd),line=document.createElement('span');
+        line.className='expiry-line';line.style.left=`${start}%`;line.style.top=`calc(${row} * var(--cell-h) + 17px)`;line.style.width=`${Math.max(0,end-start)}%`;grid.append(line);
+        const actions=document.createElement('div');actions.className='expiry-actions';actions.style.left=`${start}%`;actions.style.top='calc(4 * var(--cell-h))';actions.innerHTML='<button>決定</button><button>キャンセル</button>';
+        actions.children[0].onclick=confirmSpawn;actions.children[1].onclick=cancelSpawn;grid.append(actions);
+      }
+
+      // 大きさ変化設定モードの描画
+      if(state.scaleEditing){
+        const n = state.scaleEditing;
+        const nLane = laneForBeat(n.beat);
+        const sLane = laneForBeat(n.spawnBeat);
+
+        if(lane >= sLane && lane <= nLane){
+          const row = shapes.findIndex(x => x[0] === n.shape);
+          const startBeat = Math.max(laneStart, n.spawnBeat);
+          const endBeat = Math.min(laneEnd, n.beat);
+
+          if(startBeat <= endBeat){
+            const startPct = beatToPercent(startBeat,laneStart,laneEnd);
+            const endPct = beatToPercent(endBeat,laneStart,laneEnd);
+
+            const line = document.createElement('span');
+            line.className = 'expiry-line';
+            line.style.left = `${startPct}%`;
+            line.style.top = `calc(${row} * var(--cell-h) + 17px)`;
+            line.style.width = `${Math.max(0, endPct - startPct)}%`;
+            grid.append(line);
+          }
+
+          state.scalePointsTemp.filter(p => p.beat >= laneStart && p.beat < laneEnd).forEach(p => {
+            const pct = beatToPercent(p.beat,laneStart,laneEnd);
+            const ptEl = document.createElement('div');
+            ptEl.className = 'scale-point';
+            ptEl.style.left = `${pct}%`;
+            ptEl.style.top = `calc(${row} * var(--cell-h) + 17px)`;
+            ptEl.title='クリックしてサイズ変化ペースを調整';ptEl.onclick=e=>{e.stopPropagation();openScalePace(state.scalePointsTemp.indexOf(p));};
+
+            const boxEl = document.createElement('div');
+            boxEl.className = 'scale-box';
+            boxEl.style.left = `${pct}%`;
+            boxEl.style.top = `calc(${row} * var(--cell-h) + 12px)`;
+            
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.value = p.scale;
+            input.onclick = e => e.stopPropagation();
+            input.onchange = e => {
+              const val = Number(e.target.value);
+              if(isNaN(val) || val < 0 || val > 1500){
+                toast('0〜1500の範囲で指定してください。');
+                e.target.value = p.scale;
+              } else {
+                p.scale = val;
+              }
+            };
+
+            const unit = document.createElement('span');
+            unit.textContent = '%';
+
+            boxEl.append(input, unit);
+            grid.append(ptEl, boxEl);
+          });
+          if(state.scaleEditing){const ordered=state.scalePointsTemp.slice().sort((a,b)=>a.beat-b.beat);ordered.forEach((p,i)=>{const end=i+1<ordered.length?ordered[i+1].beat:n.beat;if(end<=p.beat||p.beat<laneStart||p.beat>=laneEnd)return;const line=document.createElement('span');line.className='scale-pace-line';line.style.left=`${beatToPercent(p.beat,laneStart,laneEnd)}%`;line.style.width=`${Math.max(0,beatToPercent(end,laneStart,laneEnd)-beatToPercent(p.beat,laneStart,laneEnd))}%`;line.style.top=`calc(${row} * var(--cell-h) + 17px)`;line.title='サイズ変化ペースを調整';line.onclick=e=>{e.stopPropagation();openScalePace(state.scalePointsTemp.indexOf(p));};grid.append(line);});}
+
+          if(lane === nLane){
+            const actions = document.createElement('div');
+            actions.className = 'expiry-actions';
+            const endPct = beatToPercent(n.beat,laneStart,laneEnd);
+            actions.style.left = `${endPct}%`;
+            actions.style.top = 'calc(4 * var(--cell-h))';
+            actions.innerHTML = '<button>決定</button><button>キャンセル</button>';
+            actions.children[0].onclick = confirmScale;
+            actions.children[1].onclick = cancelScale;
+            grid.append(actions);
+          }
+        }
+      }
+
+      if(state.pauseRangeEditing){
+        const pe=state.pauseRangeEditing,n=pe.note, row=shapes.findIndex(x=>x[0]===n.shape),first=pe.firstBeat,second=pe.secondBeat;
+        if(lane===laneForBeat(first??n.beat)){
+          const line=document.createElement('span');line.className='expiry-line';line.style.left=`${beatToPercent(first??n.beat,laneStart,laneEnd)}%`;line.style.top=`calc(${row} * var(--cell-h) + 17px)`;
+          if(second!==null)line.style.width=`${Math.max(0,beatToPercent(second,laneStart,laneEnd)-beatToPercent(first,laneStart,laneEnd))}%`;grid.append(line);
+        }
+        const actionBeat=second??first;
+        if(actionBeat!==null&&lane===laneForBeat(actionBeat)){
+          const actions=document.createElement('div');actions.className='expiry-actions';actions.style.left=`${beatToPercent(actionBeat,laneStart,laneEnd)}%`;actions.style.top='calc(4 * var(--cell-h))';
+          actions.innerHTML=second===null?'<button>キャンセル</button>':'<button>キャンセル</button><button>決定</button>';
+          actions.children[0].onclick=cancelPauseRange;if(second!==null)actions.children[1].onclick=confirmPauseRange;grid.append(actions);
+        }
+      }
+
+      if(state.playTimer && (state.playLaneIndex===null || state.playLaneIndex===lane)){
+        const ph=document.createElement('div'); ph.className='playhead'; ph.id=`playhead-lane-${lane}`; grid.append(ph);
+      }
+
+      content.append(grid);wrap.append(tools,content);lanes.append(wrap);
+    }
+  }
+
+  function openMeasureSettings(measure){
+    state.measureEditing=measure;ensureTempoMeasures();$('measureNumber').textContent=measure+1;$('measureBpm').textContent=+$('bpm').value||120;$('measureBeats').value=state.barBeats[measure]||4;renderMeasureBpmRows();
+    const start=measureStartBeat(measure),end=measureStartBeat(measure+1);
+    const notes=state.notes.filter(n=>(n.hasCustomSpawn?n.spawnBeat:n.beat-2)<end&&n.beat>=start).map(n=>n.id);
+    const targets=state.targets.filter(t=>t.beat<end&&(t.hideBeat==null||t.hideBeat>=start)).map(t=>t.id);
+    $('measureNotes').textContent=notes.length?notes.join(', '):'—';$('measureTargets').textContent=targets.length?targets.join(', '):'—';$('measureDialog').showModal();
+  }
+  function renderMeasureBpmRows(){const m=state.measureEditing;if(m==null)return;const root=$('measureBpmRows');root.replaceChildren();const count=Math.max(1,Math.min(64,Number($('measureBeats').value)||4));for(let i=0;i<count;i++){const label=document.createElement('label');label.style.cssText='display:flex;align-items:center;gap:4px';label.textContent=`${i+1}拍目`;const input=document.createElement('input');input.type='number';input.min='1';input.step='1';input.placeholder=String(+$('bpm').value||120);input.value=state.measureBpms?.[m]?.[i]??'';input.dataset.beatIndex=i;input.style.width='76px';label.append(input);root.append(label);}}
+  function saveMeasureSettings(){
+    const measure=state.measureEditing, beats=Number($('measureBeats').value);
+    if(!Number.isInteger(beats)||beats<=0){toast('拍子数は1以上の整数を入力してください。');return;}
+    const tempoRow=Array.from({length:beats},(_,i)=>{const input=$('measureBpmRows').querySelector(`[data-beat-index="${i}"]`),v=input?.value.trim();if(!v)return null;const n=Number(v);return Number.isInteger(n)&&n>0?n:NaN;});if(tempoRow.some(Number.isNaN)){toast('個別BPMは1以上の整数で入力してください。');return;}
+    const before=snapshot(),oldBeats=state.barBeats.slice(0,measureCount()),newBeats=oldBeats.slice();newBeats[measure]=beats;
+    const remap=value=>remapBeatAfterMeterChange(value,measure,oldBeats,newBeats);
+    state.notes.forEach(n=>{n.beat=remap(n.beat);if(n.spawnBeat!==undefined)n.spawnBeat=remap(n.spawnBeat);(n.scalePoints||[]).forEach(p=>p.beat=remap(p.beat));(n.pathPauses||[]).forEach(p=>{p.startBeat=remap(p.startBeat);p.endBeat=remap(p.endBeat);});});
+    state.targets.forEach(t=>{t.beat=remap(t.beat);if(t.hideBeat!==null&&t.hideBeat!==undefined)t.hideBeat=remap(t.hideBeat);});
+    state.barBeats=newBeats;ensureTempoMeasures();state.measureBpms[measure]=tempoRow;let maxBeat=Math.max(0,...state.notes.map(n=>n.beat),...state.targets.map(t=>t.hideBeat||t.beat));while(maxBeat>=measureStartBeat(state.measureCount)){state.barBeats.push(4);state.measureBpms.push([null,null,null,null]);state.measureCount++;}
+    commit(before);state.measureEditing=null;$('measureDialog').close();render();
+  }
+  function toggleCell(lane,row,col,list){
+    const before=snapshot(), kind=state.mode, arr=kind==='note'?state.notes:state.targets;
+    if(list.length){
+      const itemToDelete = list.at(-1);
+      if(kind==='target' && itemToDelete.placement){
+        if(!confirm('配置設定済のターゲットを削除してもよろしいですか？')) return;
+      }
+      const i=arr.indexOf(itemToDelete);
+      arr.splice(i,1);
+    } else {
+      const item=kind==='note'?{id:nextId('note',row),shape:shapes[row][0],beat:formatBeat(beatFor(lane,col)),grid:state.grid,spawnBeat:formatBeat(beatFor(lane,col)-2),hasCustomSpawn:false,targetId:'',path:'line',pathPoints:null,pathControlPoints:{},pathPauses:[],pathSpeedProfiles:[],targetScalePct:100,scalePoints:[],rotationDirection:'right',rotationSpeed:0,fillColor:'#111218',fillOpacity:0}:{id:nextId('target',row),shape:shapes[row][0],beat:formatBeat(beatFor(lane,col)),grid:state.grid,hideBeat:null,placement:null,spawnEffect:'default',hideEffect:'default',fillColor:'#111218',fillOpacity:0};
+      arr.push(item);if(kind==='target')state.freshTargetId=item.id;
+    }
+    commit(before);render();
+  }
+
+  function eligibleTarget(t,n){return t.shape===n.shape&&!!t.placement&&t.hideBeat!==null&&t.hideBeat!==undefined&&t.beat<=n.beat&&n.beat<=t.hideBeat;}
+  function triggerSlowPulse(targetId){ const el=$('targetId'); el.classList.remove('slow-pulse'); void el.offsetWidth; state.triggerPulseTargetId=targetId; el.classList.add('slow-pulse'); setTimeout(()=>{ if(state.triggerPulseTargetId===targetId) el.classList.remove('slow-pulse'); }, 5000); }
+
+  function openModal(kind,obj,list,lane,row,col){
+    state.selected={kind,obj,list,lane,row,col};
+    if(kind==='note'){
+      $('noteId').textContent=obj.id;
+      const sel=$('noteTarget');sel.replaceChildren(new Option('未設定',''));
+      state.targets.filter(t=>eligibleTarget(t,obj)).forEach(t=>sel.add(new Option(`${t.id}（${t.beat}〜${t.hideBeat}拍）`,t.id)));
+      sel.value=obj.targetId;
+      $('spawnBeatIcon').textContent = obj.hasCustomSpawn ? ' ✅' : '';
+      $('pathLabel').textContent = obj.hasCustomPath ? '🔧' : (obj.path === 'line' ? '直線（仮）' : 'カスタム');
+      
+      const btnScale = $('btnScaleSelect');
+      btnScale.disabled = !obj.hasCustomSpawn;
+      $('scaleIcon').textContent = (obj.scalePoints && obj.scalePoints.length > 0) ? ' 🔧' : '';
+
+      $('rotationDirection').value=obj.rotationDirection;$('rotationSpeed').value=obj.rotationSpeed;
+      const linkedTarget=state.targets.find(t=>t.id===obj.targetId&&t.placement);if(linkedTarget)obj.targetScalePct=(linkedTarget.placement.scale||1)*100;$('noteEndScale').textContent=`再生時 ${Math.round(obj.targetScalePct??100)}%`;
+      $('noteFillColor').value=obj.fillColor||'#111218'; $('noteFillOpacity').value=Number(obj.fillOpacity||0); $('noteFillValue').value=`${$('noteFillOpacity').value}%`;
+      $('noteCopyStatus').textContent=state.clipboard.note?'コピー済み':'コピーなし'; $('pasteNote').disabled=!state.clipboard.note;
+      $('noteDialog').showModal();
+    }else{
+      $('targetId').textContent=obj.id;$('targetId').classList.toggle('fresh',state.freshTargetId===obj.id);
+      $('placementWarning').hidden=!!obj.placement;
+      $('expiryWarning').hidden=obj.hideBeat!==null&&obj.hideBeat!==undefined;
+      $('switchSameTarget').disabled=list.length<2;
+      $('targetFillColor').value=obj.fillColor||'#111218'; $('targetFillOpacity').value=Number(obj.fillOpacity||0); $('targetFillValue').value=`${$('targetFillOpacity').value}%`;
+      $('targetCopyStatus').textContent=state.clipboard.target?'コピー済み':'コピーなし'; $('pasteTarget').disabled=!state.clipboard.target;
+      $('targetDialog').showModal();
+    }
+  }
+
+  function same(kind){const s=state.selected;if(!s||s.kind!==kind)return;const arr=kind==='note'?state.notes:state.targets;const before=snapshot(), x=structuredClone(s.obj);x.id=nextId(kind, s.row);arr.push(x);if(kind==='target')state.freshTargetId=x.id;commit(before);render();openModal(kind,x,[...s.list,x],s.lane,s.row,s.col);if(kind==='target')triggerSlowPulse(x.id);}
+  function switchSame(kind){const s=state.selected;if(!s||s.kind!==kind||s.list.length<2){toast('このグリッドには、切り替える同時オブジェクトがありません。');return;}const i=s.list.indexOf(s.obj), next=s.list[(i+1)%s.list.length];openModal(kind,next,s.list,s.lane,s.row,s.col);if(kind==='target')triggerSlowPulse(next.id);}
+  function deleteCurrentObject(kind){
+    const s=state.selected;if(!s||s.kind!==kind)return;
+    const arr=kind==='note'?state.notes:state.targets;
+    if(kind==='target' && s.obj.placement){
+      if(!confirm('配置設定済のターゲットを削除してもよろしいですか？')) return;
+    }
+    const before=snapshot();
+    const idx=arr.indexOf(s.obj);
+    if(idx>=0) arr.splice(idx,1);
+    commit(before);
+    render();
+    if(kind==='note') $('noteDialog').close();
+    else $('targetDialog').close();
+    state.selected=null;
+  }
+
+  function saveNote(){
+    const s=state.selected;if(!s)return;
+    const before=snapshot(),o=s.obj;
+    o.targetId=$('noteTarget').value;
+    o.rotationDirection=$('rotationDirection').value;
+    o.rotationSpeed=+$('rotationSpeed').value;
+    o.fillColor=$('noteFillColor').value; o.fillOpacity=+$('noteFillOpacity').value;
+    const linked=state.targets.find(t=>t.id===o.targetId&&t.placement);
+    o.targetScalePct=linked?(linked.placement.scale||1)*100:100;
+    $('noteEndScale').textContent=`再生時 ${Math.round(o.targetScalePct)}%`;
+    commit(before);
+    render();
+    $('noteCopyStatus').textContent=state.clipboard.note?'コピー済み':'コピーなし';
+  }
+
+  function saveTargetFill(){const s=state.selected;if(!s||s.kind!=='target')return;const before=snapshot();s.obj.fillColor=$('targetFillColor').value;s.obj.fillOpacity=+$('targetFillOpacity').value;commit(before);render();}
+  function toast(message){const el=$('toast');el.textContent=message;el.hidden=false;clearTimeout(state.toastTimer);state.toastTimer=setTimeout(()=>el.hidden=true,2000);}
+
+  function copyObject(kind){
+    const s=state.selected; if(!s||s.kind!==kind)return;
+    if(kind==='note'){
+      const n=s.obj,sourceSpawn=n.hasCustomSpawn?n.spawnBeat:n.beat-2; state.clipboard.note={path:n.path,pathPoints:structuredClone(n.pathPoints||[]),pathEndIndex:n.pathEndIndex??null,pathControlPoints:structuredClone(n.pathControlPoints||{}),pathPauses:(n.pathPauses||[]).map(p=>({...p,startOffset:p.startBeat-sourceSpawn,endOffset:p.endBeat-sourceSpawn})),pathSpeedProfiles:structuredClone(n.pathSpeedProfiles||[]),duration:Math.max(0,n.beat-sourceSpawn),scalePoints:(n.scalePoints||[]).map(p=>({offset:p.beat-sourceSpawn,scale:p.scale,ease:p.ease||'linear'})),rotationSpeed:n.rotationSpeed||0,rotationDirection:n.rotationDirection||'right'};
+      $('noteCopyStatus').textContent='コピー済み'; $('pasteNote').disabled=false;
+    } else {
+      const t=s.obj; state.clipboard.target={placement:structuredClone(t.placement),duration:t.hideBeat==null?null:t.hideBeat-t.beat,spawnEffect:t.spawnEffect||'default',hideEffect:t.hideEffect||'default'};
+      $('targetCopyStatus').textContent='コピー済み'; $('pasteTarget').disabled=false;
+    }
+    toast(kind==='note'?'ノーツ設定をコピーしました。':'ターゲット設定をコピーしました。');
+  }
+  function pasteObject(kind){
+    const s=state.selected, clip=state.clipboard[kind]; if(!s||s.kind!==kind||!clip)return;
+    const before=snapshot(), o=s.obj;
+    if(kind==='note'){
+      o.path=clip.path; o.pathPoints=structuredClone(clip.pathPoints); o.pathControlPoints=structuredClone(clip.pathControlPoints); o.hasCustomPath=!!clip.pathPoints.length;
+      o.spawnBeat=formatBeat(o.beat-clip.duration); o.hasCustomSpawn=true; o.pathEndIndex=clip.pathEndIndex;o.scalePoints=(clip.scalePoints||[]).map(p=>({beat:o.spawnBeat+p.offset,scale:p.scale,ease:p.ease||'linear'})); o.pathPauses=(clip.pathPauses||[]).map(p=>({pointIndex:p.pointIndex,startBeat:o.spawnBeat+p.startOffset,endBeat:o.spawnBeat+p.endOffset}));o.pathSpeedProfiles=structuredClone(clip.pathSpeedProfiles||[]);o.rotationSpeed=clip.rotationSpeed; o.rotationDirection=clip.rotationDirection;
+      o.targetId='';o.targetScalePct=100;
+      $('noteTarget').value='';
+    } else {
+      o.placement=structuredClone(clip.placement); o.hideBeat=clip.duration==null?null:formatBeat(o.beat+clip.duration); o.spawnEffect=clip.spawnEffect; o.hideEffect=clip.hideEffect;
+    }
+    commit(before); render(); openModal(kind,o,s.list,s.lane,s.row,s.col); toast(kind==='note'?'ノーツ設定を貼り付けました。':'ターゲット設定を貼り付けました。');
+  }
+
+  function pickExpiry(lane,col){const beat=formatBeat(beatFor(lane,col));if(beat<state.expiryEditing.beat){toast('消失タイミングは、ターゲットの発生時刻より前には設定できません。');return;}state.expiryPending={lane,beat};render();}
+  function confirmExpiry(){
+    if(!state.expiryEditing||!state.expiryPending)return;
+    const before=snapshot();
+    state.expiryEditing.hideBeat=state.expiryPending.beat;
+    const t=state.expiryEditing;
+    state.expiryEditing=null;
+    state.expiryPending=null;
+    commit(before);
+    render();
+    if(t && state.selected && state.selected.kind==='target' && state.selected.obj.id===t.id){
+      openModal('target',t,state.selected.list,state.selected.lane,state.selected.row,state.selected.col);
+    }
+  }
+  function cancelExpiry(){
+    const t=state.expiryEditing;
+    state.expiryEditing=null;
+    state.expiryPending=null;
+    render();
+    if(t && state.selected && state.selected.kind==='target' && state.selected.obj.id===t.id){
+      openModal('target',t,state.selected.list,state.selected.lane,state.selected.row,state.selected.col);
+    }
+  }
+
+  function pickSpawn(lane,col){const beat=formatBeat(beatFor(lane,col));if(beat>state.spawnEditing.beat){toast('発生タイミングは、ノーツの判定時刻より未来の時間には設定できません。');return;}state.spawnPending={lane,beat};render();}
+  function confirmSpawn(){if(!state.spawnEditing||!state.spawnPending)return;const before=snapshot();state.spawnEditing.spawnBeat=state.spawnPending.beat;state.spawnEditing.hasCustomSpawn=true;const editedNote=state.spawnEditing;state.spawnEditing=null;state.spawnPending=null;commit(before);render();openModal('note',editedNote,state.selected?state.selected.list:[editedNote],state.selected?state.selected.lane:0,state.selected?state.selected.row:0,state.selected?state.selected.col:0);}
+  function cancelSpawn(){const editedNote=state.spawnEditing;state.spawnEditing=null;state.spawnPending=null;render();if(editedNote)openModal('note',editedNote,state.selected?state.selected.list:[editedNote],state.selected?state.selected.lane:0,state.selected?state.selected.row:0,state.selected?state.selected.col:0);}
+
+  // 大きさ倍率変化設定
+  function startScaleSelect(){
+    const s = state.selected;
+    if(!s || s.kind !== 'note') return;
+    const note = s.obj;
+    if(!note.hasCustomSpawn){
+      toast('発生タイミングが設定されていません。');
+      return;
+    }
+    suppressClick = false;
+    $('noteDialog').close();
+    state.scaleEditing = note;
+    state.scalePointsTemp = note.scalePoints ? structuredClone(note.scalePoints) : [];
+    render();
+  }
+
+  function pickScalePoint(lane, col){
+    const beat = formatBeat(beatFor(lane, col));
+    const n = state.scaleEditing;
+    if(!n) return;
+    if(beat < n.spawnBeat || beat > n.beat){
+      toast('発生タイミングから判定時刻の範囲内で選択してください。');
+      return;
+    }
+    const idx = state.scalePointsTemp.findIndex(p => Math.abs(p.beat - beat) < .0001);
+    if(idx >= 0){
+      state.scalePointsTemp[idx].scale = 100;
+    } else {
+      state.scalePointsTemp.push({ beat, scale: 100 });
+      state.scalePointsTemp.sort((a,b) => a.beat - b.beat);
+    }
+    render();
+  }
+
+  function confirmScale(){
+    if(!state.scaleEditing) return;
+    const before = snapshot();
+    state.scaleEditing.scalePoints = structuredClone(state.scalePointsTemp);
+    const editedNote = state.scaleEditing;
+    state.scaleEditing = null;
+    commit(before);
+    render();
+    openModal('note', editedNote, state.selected?state.selected.list:[editedNote], state.selected?state.selected.lane:0, state.selected?state.selected.row:0, state.selected?state.selected.col:0);
+  }
+
+  function cancelScale(){
+    const editedNote = state.scaleEditing;
+    state.scaleEditing = null;
+    render();
+    if(editedNote) openModal('note', editedNote, state.selected?state.selected.list:[editedNote], state.selected?state.selected.lane:0, state.selected?state.selected.row:0, state.selected?state.selected.col:0);
+  }
+
+  function scaleEase(t,pattern){t=Math.max(0,Math.min(1,t));return pattern==='quadratic'?t*t:t;}
+  function openScalePace(index){const p=state.scalePointsTemp[index],ordered=state.scalePointsTemp.slice().sort((a,b)=>a.beat-b.beat);if(!p)return;state.scalePacePoint=p;state.scalePaceIndex=ordered.indexOf(p);state.scalePaceTemp=p.ease||'linear';$('scalePacePattern').value=state.scalePaceTemp;for(const id of ['scalePaceCurve','scalePaceSim']){const c=$(id);c.width=c.parentElement.clientWidth||420;c.height=c.parentElement.clientHeight||236;}$('scalePaceDialog').showModal();drawScalePace();}
+  function drawScalePace(){if(!$('scalePaceDialog').open)return;const ordered=state.scalePointsTemp.slice().sort((a,b)=>a.beat-b.beat),i=state.scalePaceIndex,p=ordered[i];if(!p)return;const pattern=$('scalePacePattern').value,curve=$('scalePaceCurve'),sim=$('scalePaceSim'),c=curve.getContext('2d'),s=sim.getContext('2d'),w=curve.width,h=curve.height;c.clearRect(0,0,w,h);c.strokeStyle='#465064';c.beginPath();c.moveTo(30,h-25);c.lineTo(w-12,h-25);c.moveTo(30,12);c.lineTo(30,h-25);c.stroke();c.strokeStyle='#6fdcff';c.lineWidth=3;c.beginPath();for(let k=0;k<=100;k++){const t=k/100,v=scaleEase(t,pattern),x=30+t*(w-45),y=h-25-v*(h-45);if(!k)c.moveTo(x,y);else c.lineTo(x,y);}c.stroke();s.clearRect(0,0,sim.width,sim.height);s.fillStyle='#090d13';s.fillRect(0,0,sim.width,sim.height);const elapsed=(performance.now()%1800)/1800,q=scaleEase(elapsed,pattern),end=ordered[i+1]?.scale??(state.scaleEditing.targetScalePct??((state.targets.find(t=>t.id===state.scaleEditing.targetId)?.placement?.scale||1)*100)),value=p.scale+(end-p.scale)*q,size=Math.max(10,160*value/100)*(sim.width/1000);s.save();s.translate(sim.width/2,sim.height/2);traceShapePath(s,state.scaleEditing.shape,size);s.fillStyle='rgba(111,220,255,.2)';s.fill();s.strokeStyle='#fff';s.lineWidth=2;s.stroke();s.restore();state.scalePaceAnimId=requestAnimationFrame(drawScalePace);}
+  function closeScalePace(save){if(state.scalePaceAnimId)cancelAnimationFrame(state.scalePaceAnimId);state.scalePaceAnimId=null;if(save&&state.scalePacePoint)state.scalePacePoint.ease=$('scalePacePattern').value;state.scalePacePoint=null;$('scalePaceDialog').close();render();}
+
+  function shapeSvg(shape, scale){
+    const baseStrokeWidth = 2;
+    const effectiveStrokeWidth = 2;
+    // 三角形の重心(y=57)を中心に合わせるためdy=7シフト
+    const paths={
+      circle:'<circle cx="50" cy="50" r="42"/>',
+      triangle:'<path d="M50 13 L95.03 91 L4.97 91 Z"/>',
+      square:'<rect x="9" y="9" width="82" height="82"/>',
+      star:'<path d="M50 5 L61 36 L94 36 L67 55 L77 88 L50 69 L23 88 L33 55 L6 36 L39 36 Z"/>'
+    };
+    return `<svg viewBox="0 0 100 100" aria-label="target"><g fill="none" stroke="#ffffff" stroke-width="${effectiveStrokeWidth}">${paths[shape]}</g></svg>`;
+  }
+
+  function updatePlacementInfo(){const p=state.placementTemp;if(!p)return;$('placementX').textContent=Math.round((p.x-.5)*200);$('placementY').textContent=Math.round((.5-p.y)*200);$('placementAngle').textContent=`${Math.round((p.rotation+360)%360)}°`;$('placementSize').textContent=`${Math.round(p.scale*100)}%`;}
+  function renderPlacementPreview(){
+    const screen=$('placementScreen'),p=state.placementTemp;
+    screen.replaceChildren();
+    const scene=document.createElement('canvas');scene.id='placementContextCanvas';scene.width=screen.clientWidth||800;scene.height=screen.clientHeight||450;screen.append(scene);
+    const selectedTarget=state.selected?.kind==='target'?state.selected.obj:null;drawSceneAtBeat(scene.getContext('2d'),scene.width,scene.height,selectedTarget?.beat||0,selectedTarget?.id||null,selectedTarget?.id||null);
+    if(!p)return;
+    const basePx=Math.max(10,160*p.scale)*(screen.clientWidth/1000),shape=state.selected.obj.shape,boxHeight=shape==='triangle'?basePx*Math.sqrt(3)/2:basePx;const box=document.createElement('div');box.className='transform-box';box.style.left=`${p.x*100}%`;box.style.top=`${p.y*100}%`;box.style.width=`${basePx}px`;box.style.height=`${boxHeight}px`;box.style.transform=`translate(-50%,-50%) rotate(${p.rotation}deg)`;const target=document.createElement('canvas');target.className='preview-target';target.width=Math.max(1,Math.round(basePx));target.height=Math.max(1,Math.round(basePx));target.style.position='absolute';target.style.left='50%';target.style.top='50%';target.style.width=`${basePx}px`;target.style.height=`${basePx}px`;target.style.transform='translate(-50%,-50%)';drawTargetShape(target.getContext('2d'),shape,basePx/2,basePx/2,basePx,1,1,{fillColor:state.selected.obj.fillColor||'#111218',fillOpacity:Number(state.selected.obj.fillOpacity||0)});box.append(target);['nw','ne','se','sw'].forEach(name=>{const h=document.createElement('span');h.className=`transform-handle ${name}`;h.onpointerdown=e=>startTransform(e,'scale');box.append(h);});box.onpointerdown=e=>{if(e.target.classList.contains('transform-handle'))return;startTransform(e,'move');};screen.append(box);updatePlacementInfo();
+  }
+  
+  function handlePlacementScreenPointerDown(e){
+    if(e.target.closest('.transform-box')){
+      if(!e.target.classList.contains('transform-handle')){
+        startTransform(e, 'move');
+      }
+      return;
+    }
+
+    const screen = $('placementScreen');
+    const rect = screen.getBoundingClientRect();
+    if(!state.placementTemp){
+      const clickX = (e.clientX - rect.left) / rect.width;
+      const clickY = (e.clientY - rect.top) / rect.height;
+      state.placementTemp = {
+        x: Math.max(0, Math.min(1, clickX)),
+        y: Math.max(0, Math.min(1, clickY)),
+        rotation: 0,
+        scale: 1.0
+      };
+      renderPlacementPreview();
+    } else {
+      const p = structuredClone(state.placementTemp);
+      const cx = rect.left + p.x * rect.width;
+      const cy = rect.top + p.y * rect.height;
+      startTransform(e, 'rotate', cx, cy);
+    }
+  }
+
+  function startTransform(e, kind, customCx, customCy){
+    e.preventDefault();
+    e.stopPropagation();
+    const screen = $('placementScreen');
+    const r = screen.getBoundingClientRect();
+    const p = structuredClone(state.placementTemp);
+    const cx = customCx !== undefined ? customCx : r.left + p.x * r.width;
+    const cy = customCy !== undefined ? customCy : r.top + p.y * r.height;
+    state.transformGesture = {
+      kind,
+      startX: e.clientX,
+      startY: e.clientY,
+      start: p,
+      cx,
+      cy,
+      startDistance: Math.max(1, Math.hypot(e.clientX - cx, e.clientY - cy)),
+      startAngle: Math.atan2(e.clientY - cy, e.clientX - cx)
+    };
+    screen.setPointerCapture(e.pointerId);
+  }
+
+  function moveTransform(e){const g=state.transformGesture;if(!g)return;const screen=$('placementScreen'),r=screen.getBoundingClientRect();if(g.kind==='move'){state.placementTemp.x=Math.max(0,Math.min(1,g.start.x+(e.clientX-g.startX)/r.width));state.placementTemp.y=Math.max(0,Math.min(1,g.start.y+(e.clientY-g.startY)/r.height));}else if(g.kind==='scale'){const ratio=Math.hypot(e.clientX-g.cx,e.clientY-g.cy)/g.startDistance;state.placementTemp.scale=Math.max(.05,Math.min(15,g.start.scale*ratio));}else{const a=Math.atan2(e.clientY-g.cy,e.clientX-g.cx);state.placementTemp.rotation=(g.start.rotation+(a-g.startAngle)*180/Math.PI+360)%360;}renderPlacementPreview();}
+  function openPlacement(){const s=state.selected;if(!s)return;$('targetDialog').close();state.placementTemp=s.obj.placement?structuredClone(s.obj.placement):null;renderPlacementPreview();$('placementDialog').showModal();}
+  function closePlacement(save){const s=state.selected;if(save&&state.placementTemp){const before=snapshot();s.obj.placement=structuredClone(state.placementTemp);state.notes.filter(n=>n.targetId===s.obj.id).forEach(n=>n.targetScalePct=(s.obj.placement.scale||1)*100);commit(before);render();}$('placementDialog').close();openModal('target',s.obj,s.list,s.lane,s.row,s.col);}
+
+  // ===== Web Audio API: バスドラム風の再生音 =====
+  let audioCtx;
+  function beep(){
+    try {
+      audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+      if(audioCtx.state === 'suspended') audioCtx.resume();
+      
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      const vol = (+$('noteVol').value / 100);
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(120, now);
+      osc.frequency.exponentialRampToValueAtTime(30, now + 0.08);
+      
+      gain.gain.setValueAtTime(vol * 0.8, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      osc.start(now);
+      osc.stop(now + 0.08);
+    } catch(e){}
+  }
+
+  function stopPlayback(){
+    if(state.playTimer){ clearInterval(state.playTimer); state.playTimer=null; }
+    if(state.music){ state.music.pause(); }
+    $('playAll').textContent='▶ 最初から再生';
+    state.playLaneIndex=null;
+    render();
+  }
+
+  function startPlayback(startBeat, endBeat, laneIndex=null){
+    if(state.playTimer) stopPlayback();
+    const bpm=+$('bpm').value||120, offset=+$('offset').value||0;
+    state.playStartBeat = startBeat;
+    state.playEndBeat = endBeat;
+    state.playLaneIndex = laneIndex;
+    state.playStartTime = performance.now();
+    
+    if(state.music){
+      state.music.volume=+$('musicVol').value/100;
+      const startTimeInSec = Math.max(0, beatToSeconds(startBeat) + offset);
+      state.music.currentTime = startTimeInSec;
+      state.music.play().catch(()=>{});
+    }
+
+    const playedNotes = new Set();
+    state.playTimer = setInterval(()=>{
+      const elapsedSec = (performance.now() - state.playStartTime) / 1000;
+      const currentBeat = secondsToBeat(beatToSeconds(state.playStartBeat) + elapsedSec);
+
+      if(currentBeat >= state.playEndBeat){ stopPlayback(); return; }
+
+      state.notes.filter(n => n.beat >= state.playStartBeat && n.beat <= state.playEndBeat).forEach(n => {
+        if(!playedNotes.has(n) && currentBeat >= n.beat){
+          beep();
+          playedNotes.add(n);
+        }
+      });
+
+      if(laneIndex !== null){
+        const ph = $(`playhead-lane-${laneIndex}`);
+        if(ph){
+          const pct = beatToPercent(currentBeat,laneStartBeat(laneIndex),laneEndBeat(laneIndex));
+          ph.style.left = `${Math.min(100, Math.max(0, pct))}%`;
+        }
+      } else {
+        for(let l=0; l<state.laneCount; l++){
+          const ph = $(`playhead-lane-${l}`);
+          if(ph){
+            const lStart = laneStartBeat(l), lEnd = laneEndBeat(l);
+            if(currentBeat >= lStart && currentBeat <= lEnd){
+              ph.style.display = 'block';
+              ph.style.left = `${beatToPercent(currentBeat,lStart,lEnd)}%`;
+            } else {
+              ph.style.display = 'none';
+            }
+          }
+        }
+      }
+    }, 20);
+
+    $('playAll').textContent='■ 停止';
+    render();
+  }
+
+  function playLane(lane){
+    if(state.playTimer && state.playLaneIndex === lane){ stopPlayback(); return; }
+    startPlayback(laneStartBeat(lane), laneEndBeat(lane), lane);
+  }
+
+  function playAll(){
+    if(state.playTimer){ stopPlayback(); return; }
+    startPlayback(0, measureStartBeat(measureCount()), null);
+  }
+
+  // ===== 軌道エディター機能 =====
+  function setPathEditLayer(layer){
+    state.endpointSelection=false;state.pausePointSelection=false;state.speedSelectMode=false;
+    state.pathEditLayer = layer;
+    $('pathModePointer').classList.toggle('active', layer === 'pointer');
+    $('pathModePath').classList.toggle('active', layer === 'path');
+    $('pathModeDesc').textContent = layer === 'pointer' 
+      ? 'ポインタの追加・移動・削除を行えます。' 
+      : '軌道（青線）をクリック/ドラッグして、曲線化できます。';
+    renderPathCanvas();
+  }
+
+  function openPathEditor(){
+    const s = state.selected;
+    if(!s || s.kind !== 'note') return;
+    $('noteDialog').close();
+
+    const note = s.obj;
+    state.pathPoints = note.pathPoints ? structuredClone(note.pathPoints) : []; state.pathEndIndex=Number.isInteger(note.pathEndIndex)?note.pathEndIndex:(state.pathPoints.length-1);
+    state.pathPausesTemp=structuredClone(note.pathPauses||[]);state.pathSpeedProfilesTemp=structuredClone(note.pathSpeedProfiles||[]);state.endpointSelection=false;state.pausePointSelection=false;state.speedSelectMode=false;
+    const boundTarget=state.targets.find(t=>t.id===note.targetId&&t.placement);
+    state.pathTargetPlacementTemp=boundTarget?{id:boundTarget.id,placement:structuredClone(boundTarget.placement)}:null;
+    
+    // 互換性考慮: 単一制御点(pathControlPoint)があれば複数制御点辞書(pathControlPoints)へ変換
+    state.pathControlPoints = note.pathControlPoints ? structuredClone(note.pathControlPoints) : {};
+    if(note.pathControlPoint && Object.keys(state.pathControlPoints).length === 0 && state.pathPoints.length >= 2){
+      state.pathControlPoints[0] = structuredClone(note.pathControlPoint);
+    }
+
+    state.selectedPointIdx = state.pathPoints.length > 0 ? state.pathPoints.length - 1 : -1;
+    state.selectedControlPointIdx = -1;
+
+    setPathEditLayer('pointer'); // 初期表示はポインタレイヤー
+
+    const canvas = $('pathCanvas');
+    const container = $('pathScreenContainer');
+    canvas.width = container.clientWidth || 800;
+    canvas.height = container.clientHeight || 450;
+    $('pathZoom').value=state.pathZoom;
+
+    renderPathCanvas();
+    $('pathDialog').showModal();
+  }
+
+  function getPathZoomMetrics(){
+    const canvas=$('pathCanvas'), scale=100/state.pathZoom;
+    return {scale,originX:(canvas.width-canvas.width*scale)/2+state.pathPanX,originY:(canvas.height-canvas.height*scale)/2+state.pathPanY};
+  }
+  function pathPointFromEvent(e,rect){
+    const canvas=$('pathCanvas'),m=getPathZoomMetrics();
+    const px=(e.clientX-rect.left)*canvas.width/rect.width, py=(e.clientY-rect.top)*canvas.height/rect.height;
+    return {x:(px-m.originX)/(canvas.width*m.scale),y:(py-m.originY)/(canvas.height*m.scale)};
+  }
+  function beginPauseRange(pointIndex){
+    const note=state.selected?.obj;if(!note)return;const old=(state.pathPausesTemp||[]).find(p=>p.pointIndex===pointIndex);
+    state.pauseRangeEditing={note,pointIndex,firstBeat:old?.startBeat??null,secondBeat:old?.endBeat??null,editingExisting:!!old};
+    state.pausePointSelection=false;$('pathDialog').close();render();
+  }
+  function pauseRangeOverlaps(note,start,end,excludeIndex){return (note.pathPauses||[]).some(p=>p.pointIndex!==excludeIndex&&Math.max(start,p.startBeat)<Math.min(end,p.endBeat));}
+  function pickPauseBeat(lane,col){
+    const pe=state.pauseRangeEditing;if(!pe)return;const beat=formatBeat(beatFor(lane,col)),note=pe.note,spawn=note.hasCustomSpawn?note.spawnBeat:note.beat-2;
+    if(beat<spawn||beat>note.beat){toast('ノーツの発生から再生までの範囲内を選択してください。');return;}
+    const others=(state.pathPausesTemp||[]).filter(p=>p.pointIndex!==pe.pointIndex);
+    if(others.some(p=>beat>=p.startBeat&&beat<p.endBeat)){toast('既存の一時停止時間と重なる位置は選択できません。');return;}
+    if(pe.editingExisting){pe.firstBeat=beat;pe.secondBeat=null;pe.editingExisting=false;render();return;}
+    if(pe.firstBeat===null){pe.firstBeat=beat;render();return;}
+    if(beat<=pe.firstBeat){toast('終了時刻は開始時刻より後にしてください。');return;}
+    if(others.some(p=>Math.max(pe.firstBeat,p.startBeat)<Math.min(beat,p.endBeat))){toast('既存の一時停止時間と重複しています。');return;}
+    if(others.some(p=>(p.pointIndex<pe.pointIndex&&p.endBeat>pe.firstBeat)||(p.pointIndex>pe.pointIndex&&p.startBeat<beat))){toast('Pause ranges must follow path pointer order.');return;}
+    pe.secondBeat=beat;render();
+  }
+  function cancelPauseRange(){state.pauseRangeEditing=null;render();$('pathDialog').showModal();renderPathCanvas();}
+  function confirmPauseRange(){
+    const pe=state.pauseRangeEditing;if(!pe||pe.firstBeat===null||pe.secondBeat===null)return;
+    const before=snapshot();pe.note.pathPauses=(pe.note.pathPauses||[]).filter(p=>p.pointIndex!==pe.pointIndex);pe.note.pathPauses.push({pointIndex:pe.pointIndex,startBeat:pe.firstBeat,endBeat:pe.secondBeat});pe.note.pathPauses.sort((a,b)=>a.startBeat-b.startBeat);
+    state.pathPausesTemp=structuredClone(pe.note.pathPauses);commit(before);state.pauseRangeEditing=null;render();$('pathDialog').showModal();renderPathCanvas();
+  }
+  function renderPathCanvas(){
+    const canvas = $('pathCanvas');
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,w,h);
+    const zm=getPathZoomMetrics();
+    if(state.pathZoom>100){ctx.fillStyle='rgba(255,255,255,.3)';ctx.fillRect(0,0,w,h);}
+    ctx.setTransform(zm.scale,0,0,zm.scale,zm.originX,zm.originY);
+    ctx.fillStyle='#090d13';ctx.fillRect(0,0,w,h);
+
+    const s = state.selected;
+    const note = s ? s.obj : null;
+    const targetId = note ? note.targetId : '';
+
+    const currentBeat = note ? note.beat : 0;
+    drawSceneAtBeat(ctx,w,h,currentBeat,targetId);
+
+    const pts = state.pathPoints;
+    if(pts.length >= 2){
+      ctx.strokeStyle = (state.pathEditLayer === 'path') ? '#6fdcff' : '#37a8ff';
+      ctx.lineWidth = (state.pathEditLayer === 'path') ? 4 : 2;
+
+      for(let i=0; i<pts.length - 1; i++){
+        const pStart = pts[i];
+        const pEnd = pts[i+1];
+        const cp = state.pathControlPoints[i];
+        const hasPause=state.pathPausesTemp.some(p=>p.pointIndex===i||p.pointIndex===i+1);
+        ctx.strokeStyle=hasPause?'#48d27a':(state.pathEditLayer==='path'?'#6fdcff':'#37a8ff');
+
+        ctx.beginPath();
+        ctx.moveTo(pStart.x * w, pStart.y * h);
+        if(cp){
+          ctx.quadraticCurveTo(cp.x * w, cp.y * h, pEnd.x * w, pEnd.y * h);
+        } else {
+          ctx.lineTo(pEnd.x * w, pEnd.y * h);
+        }
+        ctx.stroke();
+
+        if(cp){
+          ctx.beginPath();
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.setLineDash([4, 4]);
+          ctx.moveTo(pStart.x * w, pStart.y * h);
+          ctx.lineTo(cp.x * w, cp.y * h);
+          ctx.lineTo(pEnd.x * w, pEnd.y * h);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.strokeStyle = (state.pathEditLayer === 'path') ? '#6fdcff' : '#37a8ff'; // 復元
+        }
+      }
+    }
+
+    // ポインタ描画（ポインタレイヤー時のみ非透過強調）
+    pts.forEach((pt, idx) => {
+      const px = pt.x * w;
+      const py = pt.y * h;
+      const isLast = (idx === (Number.isInteger(state.pathEndIndex)?state.pathEndIndex:pts.length-1));
+      const isSelected = (idx === state.selectedPointIdx && state.pathEditLayer === 'pointer');
+
+      ctx.save();
+      if(state.pathEditLayer === 'path') ctx.globalAlpha = 0.5;
+
+      ctx.beginPath();
+      ctx.arc(px, py, 10, 0, Math.PI * 2);
+      const hasPause=state.pathPausesTemp.some(p=>p.pointIndex===idx);
+      ctx.fillStyle = isLast ? '#ff4757' : hasPause ? '#48d27a' : '#ffffff';
+      ctx.fill();
+      ctx.lineWidth = isSelected ? 3 : 1;
+      ctx.strokeStyle = isSelected ? '#6fdcff' : '#000000';
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    // 制御点描画
+    Object.keys(state.pathControlPoints).forEach(keyIdx => {
+      const idx = Number(keyIdx);
+      if(idx >= 0 && idx < pts.length - 1){
+        const cp = state.pathControlPoints[idx];
+        if(!cp) return;
+        const cx = cp.x * w;
+        const cy = cp.y * h;
+        const isSelectedCP = (state.pathEditLayer === 'path' && state.selectedControlPointIdx === idx);
+        ctx.save();
+        if(state.pathEditLayer === 'pointer') ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffcc00';
+        ctx.fill();
+        ctx.strokeStyle = isSelectedCP ? '#6fdcff' : '#ffffff';
+        ctx.lineWidth = isSelectedCP ? 3 : 1.5;
+        ctx.stroke();
+        ctx.restore();
+      }
+    });
+
+    // ゴミ箱ボタン位置更新（ポインタ操作モードかつ選択時のみ表示）
+    const trashBtn = $('pathTrashBtn');
+    if(state.pathEditLayer === 'pointer' && state.selectedPointIdx >= 0 && state.selectedPointIdx < pts.length){
+      const pt = pts[state.selectedPointIdx];
+      trashBtn.style.display = 'block';
+      trashBtn.style.left = `${(zm.originX+pt.x*w*zm.scale)/w*100}%`;
+      trashBtn.style.top = `${(zm.originY+pt.y*h*zm.scale)/h*100}%`;
+    } else {
+      trashBtn.style.display = 'none';
+    }
+
+    // 特殊ポインタ(黄色丸)選択時のXY座標表示制御
+    const cpInfoEl = $('pathControlPointInfo');
+    if(state.pathEditLayer === 'path' && state.selectedControlPointIdx >= 0 && state.pathControlPoints[state.selectedControlPointIdx]){
+      const cp = state.pathControlPoints[state.selectedControlPointIdx];
+      $('pathControlPointX').textContent = Math.round((cp.x - 0.5) * 200);
+      $('pathControlPointY').textContent = Math.round((0.5 - cp.y) * 200);
+      cpInfoEl.style.display = 'inline';
+    } else {
+      cpInfoEl.style.display = 'none';
+    }
+
+    // 座標計算・表示
+    let activePt = null;
+    if(state.selectedPointIdx >= 0 && state.selectedPointIdx < pts.length){
+      activePt = pts[state.selectedPointIdx];
+    } else if(pts.length > 0){
+      activePt = pts[pts.length - 1];
+    }
+
+    if(activePt){
+      $('pathPointX').textContent = Math.round((activePt.x - 0.5) * 200);
+      $('pathPointY').textContent = Math.round((0.5 - activePt.y) * 200);
+    } else {
+      $('pathPointX').textContent = '-';
+      $('pathPointY').textContent = '-';
+    }
+
+    // 角度算出
+    if(pts.length >= 2){
+      const redPt = pts[pts.length - 1];   
+      const whitePt = pts[pts.length - 2]; 
+      
+      const rx = (redPt.x - 0.5) * 200;
+      const ry = (0.5 - redPt.y) * 200;
+      const wx = (whitePt.x - 0.5) * 200;
+      const wy = (0.5 - whitePt.y) * 200;
+
+      const dx = rx - wx;
+      const dy = ry - wy;
+
+      let rad = Math.atan2(dy, dx);
+      let deg = rad * (180 / Math.PI);
+      if(deg < 0) deg += 360;
+
+      $('pathAngleVal').textContent = `${deg.toFixed(2)}°`;
+    } else {
+      $('pathAngleVal').textContent = '-';
+    }
+
+    // 軌道長さ計算
+    let totalLen = 0;const segmentLengths=[];
+    for(let i=0; i<pts.length - 1; i++){
+      const pStart = pts[i];
+      const pEnd = pts[i+1];
+      const cp = state.pathControlPoints[i];
+      let segLen=0;
+      if(cp){
+        let prev = { x: pStart.x * w, y: pStart.y * h };
+        for(let t=0.05; t<=1.0; t+=0.05){
+          const bx = (1-t)*(1-t)*pStart.x*w + 2*(1-t)*t*cp.x*w + t*t*pEnd.x*w;
+          const by = (1-t)*(1-t)*pStart.y*h + 2*(1-t)*t*cp.y*h + t*t*pEnd.y*h;
+          segLen += Math.hypot(bx - prev.x, by - prev.y);
+          prev = { x: bx, y: by };
+        }
+      } else {
+        segLen += Math.hypot((pEnd.x - pStart.x)*w, (pEnd.y - pStart.y)*h);
+      }
+      segmentLengths.push(segLen);totalLen+=segLen;
+    }
+    state.pathSegmentLengths=segmentLengths;
+    $('pathLengthVal').textContent = `${Math.round(totalLen)}px`;
+    const noteForSpeed=state.selected?.obj,spawn=noteForSpeed?(noteForSpeed.hasCustomSpawn?noteForSpeed.spawnBeat:noteForSpeed.beat-2):0;
+    const span=noteForSpeed?Math.max(.0001,noteForSpeed.beat-spawn):1,activeSpan=Math.max(.0001,span-state.pathPausesTemp.reduce((a,p)=>a+(p.endBeat-p.startBeat),0)),activeSeconds=noteForSpeed?Math.max(.0001,beatToSeconds(noteForSpeed.beat)-beatToSeconds(spawn)-state.pathPausesTemp.reduce((a,p)=>a+beatToSeconds(p.endBeat)-beatToSeconds(p.startBeat),0)):60/(+$('bpm').value||120);
+    let speedText='—';
+    if(state.pathPausesTemp.length&&state.pathEditLayer==='pointer')speedText='一時停止パスあり';
+    else if(state.pathEditLayer==='path'&&state.selectedSpeedSegment>=0&&segmentLengths[state.selectedSpeedSegment]!=null){const len=segmentLengths[state.selectedSpeedSegment],segmentBeats=activeSpan*len/Math.max(.0001,totalLen),seconds=activeSeconds*len/Math.max(.0001,totalLen);speedText=`${(len/segmentBeats).toFixed(2)}/拍・${(len/seconds).toFixed(2)}/s`;}
+    else if(totalLen>0){speedText=`${(totalLen/activeSpan).toFixed(2)}/拍・${(totalLen/activeSeconds).toFixed(2)}/s`;}
+    $('pathSpeedVal').textContent=speedText;
+  }
+
+  function appendPathPoint(point){const tracksLast=state.pathEndIndex==null||state.pathEndIndex===state.pathPoints.length-1;state.pathPoints.push(point);if(tracksLast)state.pathEndIndex=state.pathPoints.length-1;}
+  function handlePathPointerDown(e){
+    if(e.target.closest('#pathTrashBtn')) return;
+    const container = $('pathScreenContainer');
+    if(e.button===1){e.preventDefault();state.pathGesture={type:'pan',startX:e.clientX,startY:e.clientY,startPanX:state.pathPanX,startPanY:state.pathPanY};container.setPointerCapture(e.pointerId);return;}
+    const rect = container.getBoundingClientRect();
+    const world=pathPointFromEvent(e,rect), x=world.x, y=world.y;
+    const w = rect.width;
+    const h = rect.height;
+
+    const s = state.selected;
+    const note = s ? s.obj : null;
+    const targetId = note ? note.targetId : '';
+
+    if(e.shiftKey&&state.pathTargetPlacementTemp){
+      const p=state.pathTargetPlacementTemp.placement,zm=getPathZoomMetrics();
+      const radius=Math.max(10,160*(p.scale||1))*(w/1000)*zm.scale/2;
+      if(Math.hypot((x-p.x)*w*zm.scale,(y-p.y)*h*zm.scale)<radius){state.pathGesture={type:'target'};container.setPointerCapture(e.pointerId);return;}
+    }
+
+    const pointHitRadius = 24;
+
+    // --- 【パス操作レイヤー】 パス曲線化の引っぱり・選択操作 ---
+    if(state.pathEditLayer === 'path'){
+      // 既存の特殊ポインタ(黄色丸)のタップ判定
+      for(const segKey in state.pathControlPoints){
+        const segIdx = Number(segKey);
+        const cp = state.pathControlPoints[segIdx];
+        if(cp && Math.hypot((x - cp.x)*w*getPathZoomMetrics().scale, (y - cp.y)*h*getPathZoomMetrics().scale) < pointHitRadius){
+          if(state.speedSelectMode){state.speedSelectMode=false;openSpeedDialog(segIdx);return;}
+          state.selectedControlPointIdx = segIdx;
+          state.pathGesture = { type: 'control', segmentIndex: segIdx };
+          container.setPointerCapture(e.pointerId);
+          renderPathCanvas();
+          return;
+        }
+      }
+
+      if(state.pathPoints.length >= 2){
+        const clickPx = { x: x * w, y: y * h };
+        const maxSearchRadius = Math.max(w, h);
+        const step = 2; // 2px刻みで同心円状（放射状）に検索
+        
+        let foundSegIdx = -1;
+        let foundCP = null;
+
+        for(let r = 0; r <= maxSearchRadius; r += step){
+          const candidateSegs = [];
+
+          for(let i = 0; i < state.pathPoints.length - 1; i++){
+            // すでに曲線化されたパスは検索対象から除外
+            if(state.pathControlPoints[i]) continue;
+
+            const p0 = state.pathPoints[i];
+            const p1 = state.pathPoints[i+1];
+
+            const x0 = p0.x * w, y0 = p0.y * h;
+            const x1 = p1.x * w, y1 = p1.y * h;
+
+            // 線分 (x0,y0)-(x1,y1) 上の最短距離点 (projX, projY) を求める
+            const dx = x1 - x0;
+            const dy = y1 - y0;
+            const lenSq = dx * dx + dy * dy;
+            let projX = x0, projY = y0;
+
+            if(lenSq > 0){
+              let t = ((clickPx.x - x0) * dx + (clickPx.y - y0) * dy) / lenSq;
+              t = Math.max(0, Math.min(1, t));
+              projX = x0 + t * dx;
+              projY = y0 + t * dy;
+            }
+
+            const dist = Math.hypot(clickPx.x - projX, clickPx.y - projY);
+
+            // 最も近い位置（座標）にパスの一部が引っかかれば、そのパスを曲線化対象とする
+            if(dist <= r){
+              candidateSegs.push({ segIdx: i, dist });
+            }
+          }
+
+          if(candidateSegs.length > 0){
+            candidateSegs.sort((a, b) => a.dist - b.dist);
+            foundSegIdx = candidateSegs[0].segIdx;
+            foundCP = { x, y };
+            break;
+          }
+        }
+
+        if(foundSegIdx !== -1){
+          if(state.speedSelectMode){state.speedSelectMode=false;openSpeedDialog(foundSegIdx);return;}
+          state.pathControlPoints[foundSegIdx] = foundCP;
+          state.selectedControlPointIdx = foundSegIdx;
+          state.pathGesture = { type: 'control', segmentIndex: foundSegIdx };
+          container.setPointerCapture(e.pointerId);
+          renderPathCanvas();
+        } else {
+          state.selectedControlPointIdx = -1;
+          renderPathCanvas();
+        }
+      }
+      return;
+    }
+
+    // --- 【ポインタ操作レイヤー】 ポインタ生成・選択・移動・ターゲット吸着のみ ---
+    if(state.pathEditLayer === 'pointer'){
+      // 1. 既存ポインタタップ判定
+      for(let i=0; i<state.pathPoints.length; i++){
+        const pt = state.pathPoints[i];
+        if(Math.hypot((x - pt.x)*w*getPathZoomMetrics().scale, (y - pt.y)*h*getPathZoomMetrics().scale) < pointHitRadius){
+          if(state.endpointSelection){
+            if(confirm(`ポインタ${i+1}を終点として設定しますか？既存のポインタ順序・パス・特殊ポインタ・一時停止設定は保持されます。`)){state.pathEndIndex=i;state.selectedPointIdx=i;}
+            state.endpointSelection=false;renderPathCanvas();return;
+          }
+          if(state.pausePointSelection){state.selectedPointIdx=i;beginPauseRange(i);return;}
+          state.selectedPointIdx = i;
+          state.pathGesture = { type: 'point', index: i };
+          container.setPointerCapture(e.pointerId);
+          renderPathCanvas();
+          return;
+        }
+      }
+
+      // 2. 紐付けターゲットタップ判定（吸着処理）
+      if(targetId){
+        const currentBeat = note ? note.beat : 0;
+        const target = state.targets.find(t => t.id === targetId && t.placement && t.beat <= currentBeat && currentBeat <= t.hideBeat);
+        if(target){
+          const tx = target.placement.x;
+          const ty = target.placement.y;
+          if(Math.hypot((x - tx)*w, (y - ty)*h) < 40){
+            appendPathPoint({x: tx, y: ty});
+            state.selectedPointIdx = state.pathPoints.length - 1;
+            renderPathCanvas();
+            return;
+          }
+        }
+      }
+
+      // 3. 新規ポインタ設置
+      appendPathPoint({ x, y });
+      state.selectedPointIdx = state.pathPoints.length - 1;
+      renderPathCanvas();
+    }
+  }
+
+  function handlePathPointerMove(e){
+    if(!state.pathGesture) return;
+    if(state.pathGesture.type==='pan'){state.pathPanX=state.pathGesture.startPanX+e.clientX-state.pathGesture.startX;state.pathPanY=state.pathGesture.startPanY+e.clientY-state.pathGesture.startY;renderPathCanvas();return;}
+    const container = $('pathScreenContainer');
+    const rect = container.getBoundingClientRect();
+    const world=pathPointFromEvent(e,rect), x=world.x, y=world.y;
+
+    if(state.pathGesture.type==='target'&&state.pathTargetPlacementTemp){state.pathTargetPlacementTemp.placement.x=x;state.pathTargetPlacementTemp.placement.y=y;
+    } else if(state.pathGesture.type === 'point' && state.pathEditLayer === 'pointer'){
+      state.pathPoints[state.pathGesture.index] = { x, y };
+    } else if(state.pathGesture.type === 'control' && state.pathEditLayer === 'path'){
+      state.pathControlPoints[state.pathGesture.segmentIndex] = { x, y };
+    }
+    renderPathCanvas();
+  }
+
+  function handlePathPointerUp(){
+    state.pathGesture = null;
+  }
+
+  function deleteSelectedPathPoint(e){
+    if(e){
+      e.stopPropagation(); 
+      e.preventDefault();
+    }
+    if(state.pathEditLayer === 'pointer' && state.selectedPointIdx >= 0 && state.selectedPointIdx < state.pathPoints.length){
+      const delIdx = state.selectedPointIdx;
+      state.pathPoints.splice(delIdx, 1);
+      if(state.pathEndIndex>delIdx)state.pathEndIndex--;else if(state.pathEndIndex===delIdx)state.pathEndIndex=Math.max(0,delIdx-1);
+
+      // ポインタ削除に伴う制御点辞書のインデックス再構築
+      const newControlPoints = {};
+      Object.keys(state.pathControlPoints).forEach(keyStr => {
+        const k = Number(keyStr);
+        if(k < delIdx - 1){
+          newControlPoints[k] = state.pathControlPoints[k];
+        } else if(k > delIdx){
+          newControlPoints[k - 1] = state.pathControlPoints[k];
+        }
+      });
+      state.pathControlPoints = newControlPoints;
+
+      state.selectedPointIdx = state.pathPoints.length > 0 ? state.pathPoints.length - 1 : -1;
+      renderPathCanvas();
+    }
+  }
+
+  function confirmPath(){
+    const s = state.selected;
+    if(!s || s.kind !== 'note') return;
+    const before = snapshot();
+    const note = s.obj;
+    if(state.pathTargetPlacementTemp){const target=state.targets.find(t=>t.id===state.pathTargetPlacementTemp.id);if(target)target.placement=structuredClone(state.pathTargetPlacementTemp.placement);}
+    note.pathPoints = structuredClone(state.pathPoints);
+    note.pathEndIndex=state.pathPoints.length?Math.max(0,Math.min(state.pathPoints.length-1,Number.isInteger(state.pathEndIndex)?state.pathEndIndex:state.pathPoints.length-1)):null;
+    note.pathControlPoints = structuredClone(state.pathControlPoints);
+    note.pathControlPoint = state.pathControlPoints[0] ? structuredClone(state.pathControlPoints[0]) : null;
+    note.hasCustomPath = state.pathPoints.length > 0;
+    note.pathPauses=structuredClone(state.pathPausesTemp);note.pathSpeedProfiles=structuredClone(state.pathSpeedProfilesTemp);
+    commit(before);
+    state.pathTargetPlacementTemp=null;
+    $('pathDialog').close();
+    openModal('note', note, s.list, s.lane, s.row, s.col);
+  }
+
+  function pathEasing(value,pattern){const t=Math.max(0,Math.min(1,value)),k=4,d=Math.exp(k)-1;return pattern==='accelerate'?(Math.exp(k*t)-1)/d:pattern==='decelerate'?1-(Math.exp(k*(1-t))-1)/d:t;}
+  function openSpeedDialog(segment){
+    state.selectedSpeedSegment=segment;state.speedPatternTemp=state.pathSpeedProfilesTemp[segment]||'linear';$('speedPattern').value=state.speedPatternTemp;
+    const a=$('speedCurveCanvas'),b=$('speedSimCanvas');a.width=a.parentElement.clientWidth||420;a.height=a.parentElement.clientHeight||236;b.width=b.parentElement.clientWidth||420;b.height=b.parentElement.clientHeight||236;
+    $('speedDialog').showModal();drawSpeedDialog();
+  }
+  function drawSpeedDialog(){
+    if(!$('speedDialog').open)return;const pattern=$('speedPattern').value,curve=$('speedCurveCanvas'),sim=$('speedSimCanvas'),c=curve.getContext('2d'),s=sim.getContext('2d'),w=curve.width,h=curve.height;
+    c.clearRect(0,0,w,h);c.strokeStyle='#465064';c.lineWidth=1;c.beginPath();c.moveTo(30,h-25);c.lineTo(w-12,h-25);c.moveTo(30,12);c.lineTo(30,h-25);c.stroke();
+    c.strokeStyle='#6fdcff';c.lineWidth=3;c.beginPath();for(let i=0;i<=100;i++){const t=i/100,k=4,v=pattern==='accelerate'?Math.exp(k*t-k):pattern==='decelerate'?Math.exp(k*(1-t)-k):.5,x=30+t*(w-45),y=h-25-v*(h-45);if(!i)c.moveTo(x,y);else c.lineTo(x,y);}c.stroke();
+    const elapsed=(performance.now()%2200)/2200,p=pathEasing(elapsed,pattern);s.clearRect(0,0,sim.width,sim.height);drawSceneAtBeat(s,sim.width,sim.height,state.selected?.obj?.beat||0,state.selected?.obj?.targetId||null);s.strokeStyle='#47536a';s.lineWidth=3;
+    const idx=state.selectedSpeedSegment,pts=state.pathPoints,p0=pts[idx],p1=pts[idx+1],cp=state.pathControlPoints[idx],map=q=>({x:36+q.x*(sim.width-72),y:36+q.y*(sim.height-72)});
+    let dot={x:36+p*(sim.width-72),y:sim.height-36-p*(sim.height-72)};s.beginPath();
+    if(p0&&p1){const a=map(p0),b=map(p1);s.moveTo(a.x,a.y);if(cp){const c=map(cp);s.quadraticCurveTo(c.x,c.y,b.x,b.y);const t=p;dot={x:(1-t)*(1-t)*a.x+2*(1-t)*t*c.x+t*t*b.x,y:(1-t)*(1-t)*a.y+2*(1-t)*t*c.y+t*t*b.y};}else{s.lineTo(b.x,b.y);dot={x:a.x+(b.x-a.x)*p,y:a.y+(b.y-a.y)*p};}}else{s.moveTo(36,sim.height-36);s.lineTo(sim.width-36,36);}s.stroke();s.fillStyle='#ff6262';s.beginPath();s.arc(dot.x,dot.y,10,0,Math.PI*2);s.fill();
+    state.speedAnimId=requestAnimationFrame(drawSpeedDialog);
+  }
+  function closeSpeedDialog(save){
+    if(state.speedAnimId)cancelAnimationFrame(state.speedAnimId);state.speedAnimId=null;
+    if(save&&state.selectedSpeedSegment>=0){const before=snapshot(),note=state.selected.obj;state.pathSpeedProfilesTemp[state.selectedSpeedSegment]=$('speedPattern').value;note.pathSpeedProfiles=structuredClone(state.pathSpeedProfilesTemp);commit(before);render();}
+    $('speedDialog').close();if($('pathDialog').open)renderPathCanvas();
+  }
+
+  function cancelPath(){
+    const s = state.selected;
+    state.pathTargetPlacementTemp=null;
+    $('pathDialog').close();
+    if(s) openModal('note', s.obj, s.list, s.lane, s.row, s.col);
+  }
+
+  // ===== 発生・消失エフェクトモーダル機能 =====
+  function drawTargetShape(ctx, shape, cx, cy, baseSize, scale = 1, alpha = 1, opts = {}){
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    
+    if(opts.blur && opts.blur > 0){
+      ctx.filter = `blur(${opts.blur}px)`;
+    }
+
+    if(opts.scaleX !== undefined || opts.scaleY !== undefined){
+      ctx.scale(opts.scaleX ?? 1, opts.scaleY ?? 1);
+    }
+
+    if(opts.clipYRatio !== undefined){
+      const size = baseSize * Math.max(0, scale);
+      ctx.beginPath();
+      const clipH = opts.clipYRatio * size;
+      ctx.rect(-size, -clipH / 2, size * 2, clipH);
+      ctx.clip();
+    }
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = opts.lineWidth ?? 2;
+    const size = baseSize * Math.max(0, scale);
+
+    ctx.beginPath();
+    if(shape === 'circle'){
+      ctx.arc(0, 0, size/2, 0, Math.PI*2);
+    } else if(shape === 'triangle'){
+      const h_tri = size * Math.sqrt(3) / 2;
+      const r_g = h_tri / 3;
+      ctx.moveTo(0, -2 * r_g);
+      ctx.lineTo(-size / 2, r_g);
+      ctx.lineTo(size / 2, r_g);
+      ctx.closePath();
+    } else if(shape === 'square'){
+      ctx.rect(-size/2, -size/2, size, size);
+    } else if(shape === 'star'){
+      for(let i=0; i<5; i++){
+        const a = (i * 72 - 90) * Math.PI / 180;
+        const r = size/2;
+        const x = Math.cos(a) * r, y = Math.sin(a) * r;
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        const a2 = (i * 72 + 36 - 90) * Math.PI / 180;
+        const r2 = r * 0.4;
+        ctx.lineTo(Math.cos(a2)*r2, Math.sin(a2)*r2);
+      }
+      ctx.closePath();
+    }
+    if((opts.fillOpacity||0)>0){ ctx.fillStyle=opts.fillColor||'#111218'; ctx.globalAlpha=Math.max(0,Math.min(1,alpha*(opts.fillOpacity/100))); ctx.fill(); ctx.globalAlpha=Math.max(0,Math.min(1,alpha)); }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function traceShapePath(ctx,shape,size){
+    ctx.beginPath();if(shape==='circle')ctx.arc(0,0,size/2,0,Math.PI*2);else if(shape==='triangle'){const h=size*Math.sqrt(3)/2,rg=h/3;ctx.moveTo(0,-2*rg);ctx.lineTo(-size/2,rg);ctx.lineTo(size/2,rg);ctx.closePath();}else if(shape==='square')ctx.rect(-size/2,-size/2,size,size);else if(shape==='star'){for(let i=0;i<5;i++){const a=(i*72-90)*Math.PI/180,r=size/2,x=Math.cos(a)*r,y=Math.sin(a)*r;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);const a2=(i*72+36-90)*Math.PI/180,r2=r*.4;ctx.lineTo(Math.cos(a2)*r2,Math.sin(a2)*r2);}ctx.closePath();}
+  }
+  function drawSceneAtBeat(ctx,w,h,beat,selectedTargetId=null,excludeTargetId=null,effectPreview=null){
+    const targets=new Map(state.targets.map(t=>[t.id,t]));
+    const selectedPlacement=state.pathTargetPlacementTemp?.id===selectedTargetId?state.pathTargetPlacementTemp.placement:state.placementTemp;
+    if(selectedTargetId&&selectedPlacement){const t=targets.get(selectedTargetId);if(t)targets.set(selectedTargetId,{...t,placement:structuredClone(selectedPlacement)});}
+    for(const t of state.targets){if(t.id===excludeTargetId)continue;const placement=targets.get(t.id)?.placement;if(!placement)continue;const selected=t.id===selectedTargetId,shift=effectPreview?.shiftSeconds||0,copy=selected&&effectPreview?{...t,beat:secondsToBeat(beatToSeconds(t.beat)+shift),hideBeat:t.hideBeat==null?null:secondsToBeat(beatToSeconds(t.hideBeat)+shift),...(effectPreview.kind==='spawn'?{spawnEffect:effectPreview.type}:{hideEffect:effectPreview.type})}:t,ts=getTargetStateAt({...copy,placement,hideBeat:copy.hideBeat??(selected?beat:null)},beat);if(!ts&&!(selected&&copy.hideBeat==null))continue;const tr=ts||{alpha:1,scaleMult:1,opts:{}};ctx.save();ctx.translate(placement.x*w,placement.y*h);ctx.rotate((placement.rotation||0)*Math.PI/180);drawTargetShape(ctx,t.shape,0,0,Math.max(10,160*(placement.scale||1))*(w/1000),tr.scaleMult,tr.alpha,{...tr.opts,fillColor:t.fillColor||'#111218',fillOpacity:Number(t.fillOpacity||0)});ctx.restore();}
+    const notes=state.notes.map(note=>({note,pos:getNotePosAndScale(note,beat,targets,w,h)})).filter(x=>x.pos),idOf=n=>Number((n.id||'').match(/(\d+)$/)?.[1]||0),ids=[...new Set(notes.map(x=>idOf(x.note)))].sort((a,b)=>b-a);
+    for(const id of ids)for(const prefix of ['S','T','D','C'])for(const item of notes.filter(x=>idOf(x.note)===id&&x.note.id.startsWith(prefix))){const {note,pos}=item,size=Math.max(10,160*(pos.scalePct/100))*(w/1000);ctx.save();ctx.translate(pos.x,pos.y);ctx.rotate(pos.rotationDeg*Math.PI/180);traceShapePath(ctx,note.shape,size);if(Number(note.fillOpacity)>0){ctx.globalAlpha=Math.min(1,Number(note.fillOpacity)/100);ctx.fillStyle=note.fillColor||'#111218';ctx.fill();}ctx.globalAlpha=1;ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();ctx.restore();}
+  }
+
+  function openEffectModal(){
+    const s = state.selected;
+    if(!s || s.kind !== 'target') return;
+    $('targetDialog').close();
+
+    const target = s.obj;
+    $('spawnEffectSelect').value = target.spawnEffect || 'default';
+    $('hideEffectSelect').value = target.hideEffect || 'default';
+
+    const sCanvas = $('spawnEffectCanvas');
+    const hCanvas = $('hideEffectCanvas');
+
+    const sContainer = sCanvas.parentElement;
+    const hContainer = hCanvas.parentElement;
+
+    sCanvas.width = sContainer.clientWidth || 400;
+    sCanvas.height = sContainer.clientHeight || 225;
+    hCanvas.width = hContainer.clientWidth || 400;
+    hCanvas.height = hContainer.clientHeight || 225;
+
+    let startTime = performance.now();
+
+    function loop(now){
+      const elapsed = (now - startTime) / 1000;
+      const totalCycle = 1.6;
+      const cycle = elapsed % totalCycle;
+
+      const progress = (cycle / totalCycle) * 100;
+      $('spawnSeekbar').value = progress;
+      $('hideSeekbar').value = progress;
+
+      const shape = target.shape;
+      const sType = $('spawnEffectSelect').value;
+      const hType = $('hideEffectSelect').value;
+
+      // --- 発生エフェクト 描画 ---
+      const sCtx = sCanvas.getContext('2d');
+      sCtx.clearRect(0, 0, sCanvas.width, sCanvas.height);
+      drawSceneAtBeat(sCtx,sCanvas.width,sCanvas.height,secondsToBeat(beatToSeconds(target.beat)+elapsed),target.id,null,{kind:'spawn',type:$('spawnEffectSelect').value,shiftSeconds:elapsed-cycle});
+      const scx = sCanvas.width / 2, scy = sCanvas.height / 2;
+      const baseSize = Math.min(sCanvas.width, sCanvas.height) * 0.45;
+
+      let sAlpha = 0, sScale = 1, sVisible = false, sOpts = {};
+
+      if(cycle < 0.6){
+        const before = 0.6 - cycle;
+        if(sType === 'Fade'){
+          if(before <= 0.4){
+            sVisible = true;
+            sAlpha = 1 - (before / 0.4);
+          }
+        } else if(sType === '0%to100%'){
+          if(before <= 0.2){
+            sVisible = true;
+            sAlpha = 1;
+            sScale = 1 - (before / 0.2);
+          }
+        } else if(sType === 'Haze'){
+          if(before <= 0.3){
+            sVisible = true;
+            const progress = 1 - (before / 0.3);
+            sAlpha = progress;
+            sOpts.blur = (1 - progress) * 12;
+            sOpts.lineWidth = 2 + (1 - progress) * 6;
+          }
+        } else if(sType === 'Unfold'){
+          if(before <= 0.5){
+            sVisible = true;
+            sAlpha = 1;
+            sOpts.scaleX = 1 - (before / 0.5);
+          }
+        } else if(sType === 'Unfold-H'){
+          if(before <= 0.5){
+            sVisible = true;
+            sAlpha = 1;
+            sOpts.scaleY = 1 - (before / 0.5);
+          }
+        } else if(sType === 'Shrink-Fade'){
+          if(before <= 0.5){
+            sVisible = true;
+            const progress = 1 - (before / 0.5);
+            sAlpha = progress;
+            sScale = 1.2 - (0.2 * progress);
+          }
+        } else {
+          sVisible = false;
+        }
+      } else {
+        sVisible = true;
+        sAlpha = 1;
+        sScale = 1;
+      }
+
+      // The selected target in the scene above is the only effect preview.
+
+      // --- 消失エフェクト 描画 ---
+      const hCtx = hCanvas.getContext('2d');
+      hCtx.clearRect(0, 0, hCanvas.width, hCanvas.height);
+      const hideBeat=target.hideBeat??(target.beat+2);drawSceneAtBeat(hCtx,hCanvas.width,hCanvas.height,secondsToBeat(beatToSeconds(hideBeat)-.6+elapsed),target.id,null,{kind:'hide',type:$('hideEffectSelect').value,shiftSeconds:elapsed-cycle});
+      const hcx = hCanvas.width / 2, hcy = hCanvas.height / 2;
+
+      let hAlpha = 1, hScale = 1, hVisible = true, hOpts = {};
+
+      if(cycle < 0.6){
+        hVisible = true;
+        hAlpha = 1;
+        hScale = 1;
+      } else {
+        const after = cycle - 0.6;
+        if(hType === 'Fade'){
+          if(after <= 0.4){
+            hVisible = true;
+            hAlpha = 1 - (after / 0.4);
+          } else {
+            hVisible = false;
+          }
+        } else if(hType === '100%to0%'){
+          if(after <= 0.2){
+            hVisible = true;
+            hAlpha = 1;
+            hScale = 1 - (after / 0.2);
+          } else {
+            hVisible = false;
+          }
+        } else if(hType === 'Haze'){
+          if(after <= 0.3){
+            hVisible = true;
+            const progress = after / 0.3;
+            hAlpha = 1 - progress;
+            hOpts.blur = progress * 12;
+            hOpts.lineWidth = 2 + progress * 6;
+          } else {
+            hVisible = false;
+          }
+        } else if(hType === 'Fold'){
+          if(after <= 0.5){
+            hVisible = true;
+            hAlpha = 1;
+            hOpts.scaleX = 1 - (after / 0.5);
+          } else {
+            hVisible = false;
+          }
+        } else if(hType === 'Fold-H'){
+          if(after <= 0.5){
+            hVisible = true;
+            hAlpha = 1;
+            hOpts.scaleY = 1 - (after / 0.5);
+          } else {
+            hVisible = false;
+          }
+        } else if(hType === 'Spread-Fade'){
+          if(after <= 0.5){
+            hVisible = true;
+            const progress = after / 0.5;
+            hAlpha = 1 - progress;
+            hScale = 1.0 + (0.2 * progress);
+          } else {
+            hVisible = false;
+          }
+        } else {
+          hVisible = false;
+        }
+      }
+
+      // The selected target in the scene above is the only effect preview.
+
+      state.effectAnimId = requestAnimationFrame(loop);
+    }
+
+    if(state.effectAnimId) cancelAnimationFrame(state.effectAnimId);
+    state.effectAnimId = requestAnimationFrame(loop);
+
+    $('effectDialog').showModal();
+  }
+
+  function closeEffectModal(save){
+    if(state.effectAnimId){
+      cancelAnimationFrame(state.effectAnimId);
+      state.effectAnimId = null;
+    }
+    const s = state.selected;
+    if(save && s && s.kind === 'target'){
+      const before = snapshot();
+      s.obj.spawnEffect = $('spawnEffectSelect').value;
+      s.obj.hideEffect = $('hideEffectSelect').value;
+      commit(before);
+      render();
+    }
+    $('effectDialog').close();
+    if(s) openModal('target', s.obj, s.list, s.lane, s.row, s.col);
+  }
+
+  // ===== 譜面再現（プレビュー）機能 =====
+  const prevState = {
+    startLane: 0,
+    startBeat: 0,
+    isPlaying: false,
+    isPaused: false,
+    isAuto: true,
+    visualTap: false,
+    countdownSec: 4,
+    startTime: 0,
+    pauseTime: 0,
+    pausedElapsed: 0,
+    currentBeat: 0,
+    combo: 0,
+    hitTargetId: '-',
+    hitNoteId: '-',
+    animId: null,
+    autoHits: [],     // { noteId, targetId, x, y, hitBeat, time }
+    visualTaps: [],   // { x, y, rotation, targetScale, time }
+    manualFeedbacks: [], // { x, y, text, color, time }
+    hitNotesSet: new Set()
+  };
+
+  function startPreviewMode(laneIndex){
+    if(state.playTimer) stopPlayback();
+    prevState.startLane = laneIndex;
+    prevState.startBeat = laneStartBeat(laneIndex);
+    prevState.isPaused = false;
+    prevState.isAuto = true;
+    prevState.visualTap = false;
+    prevState.hitNotesSet.clear();
+
+    $('prevBtnPause').textContent = '一時停止';
+    $('prevBtnAutoPlay').textContent = 'オートプレイON';
+    $('prevBtnVisualTap').textContent = 'タップ判定可視化: OFF';
+
+    const canvas = $('previewCanvas');
+    const container = $('previewScreenContainer');
+    canvas.width = container.clientWidth || 800;
+    canvas.height = container.clientHeight || 450;
+
+    $('previewDialog').showModal();
+    resetAndStartSequence();
+  }
+
+  function resetAndStartSequence(){
+    prevState.combo = 0;
+    prevState.hitTargetId = '-';
+    prevState.hitNoteId = '-';
+    prevState.autoHits = [];
+    prevState.visualTaps = [];
+    prevState.manualFeedbacks = [];
+    prevState.hitNotesSet.clear();
+    prevState.isPaused = false;
+    prevState.pausedElapsed = 0;
+    $('prevBtnPause').textContent = '一時停止';
+
+    updateHud();
+
+    // 順序: ①静止表示・カウントダウン -> ②同期再生
+    prevState.isPlaying = false;
+    prevState.countdownSec = 4;
+    prevState.currentBeat = prevState.startBeat;
+
+    const countStartTime = performance.now();
+    const bpm = +$('bpm').value || 120;
+    const beatSec = 60 / bpm;
+    const totalCountdownSec = beatSec * 4;
+    
+    if(prevState.animId) cancelAnimationFrame(prevState.animId);
+
+    function countdownLoop(now){
+      const elapsed = (now - countStartTime) / 1000;
+      if(elapsed < totalCountdownSec){
+        const currentBeatCount = Math.floor(elapsed / beatSec);
+        prevState.countdownSec = 4 - Math.min(3, currentBeatCount);
+        renderPreviewFrame();
+        prevState.animId = requestAnimationFrame(countdownLoop);
+      } else {
+        // カウントダウン終了、楽曲 & 譜面同時に再生開始
+        prevState.isPlaying = true;
+        prevState.startTime = performance.now();
+        if(state.music){
+          const offset = +$('offset').value || 0;
+          const startTimeInSec = Math.max(0, beatToSeconds(prevState.startBeat) + offset);
+          state.music.currentTime = startTimeInSec;
+          state.music.volume = +$('musicVol').value / 100;
+          state.music.play().catch(()=>{});
+        }
+        prevState.animId = requestAnimationFrame(mainPreviewLoop);
+      }
+    }
+    prevState.animId = requestAnimationFrame(countdownLoop);
+  }
+
+  function updateHud(){
+    $('hudTargetId').textContent = prevState.hitTargetId;
+    $('hudNoteId').textContent = prevState.hitNoteId;
+    $('hudCombo').textContent = prevState.combo;
+  }
+
+  function getNotePosAndScale(note, currentBeat, targetMap, canvasW, canvasH){
+    const spawnBeat = note.hasCustomSpawn ? note.spawnBeat : (note.beat - 2);
+    if(currentBeat < spawnBeat || currentBeat > note.beat) return null;
+
+    let progress = (currentBeat - spawnBeat) / Math.max(0.0001, (note.beat - spawnBeat));
+    const target = targetMap.get(note.targetId);
+
+    let x = 0, y = 0;
+    const allPts = note.pathPoints ? note.pathPoints : [];
+    const endIdx=allPts.length?Math.max(0,Math.min(allPts.length-1,Number.isInteger(note.pathEndIndex)?note.pathEndIndex:allPts.length-1)):-1;
+    const pts=allPts.slice(0,endIdx+1);
+    if(pts.length === 1){
+      // ポインタが1つの場合：発生時刻にその座標に出現し、そのまま動かず判定を迎える
+      x = pts[0].x * canvasW;
+      y = pts[0].y * canvasH;
+    } else if(pts.length >= 2){
+      // 軌道に沿った移動
+      let totalLen = 0;
+      const lens = [];
+      for(let i=0; i<pts.length-1; i++){
+        const p0 = pts[i], p1 = pts[i+1], cp = note.pathControlPoints ? note.pathControlPoints[i] : null;
+        let segLen = 0;
+        if(cp){
+          let prevP = { x: p0.x * canvasW, y: p0.y * canvasH };
+          for(let t=0.05; t<=1.0; t+=0.05){
+            const bx = (1-t)*(1-t)*p0.x*canvasW + 2*(1-t)*t*cp.x*canvasW + t*t*p1.x*canvasW;
+            const by = (1-t)*(1-t)*p0.y*canvasH + 2*(1-t)*t*cp.y*canvasH + t*t*p1.y*canvasH;
+            segLen += Math.hypot(bx - prevP.x, by - prevP.y);
+            prevP = { x: bx, y: by };
+          }
+        } else {
+          segLen = Math.hypot((p1.x - p0.x)*canvasW, (p1.y - p0.y)*canvasH);
+        }
+        lens.push(segLen);
+        totalLen += segLen;
+      }
+
+      const pauses=(note.pathPauses||[]).filter(p=>p.pointIndex>=0&&p.pointIndex<pts.length).slice().sort((a,b)=>a.startBeat-b.startBeat);
+      if(pauses.length&&totalLen>0){
+        const anchors=[{beat:spawnBeat,progress:0}];for(const p of pauses){const q=lens.slice(0,p.pointIndex).reduce((a,b)=>a+b,0)/totalLen;anchors.push({beat:p.startBeat,progress:q},{beat:p.endBeat,progress:q});}anchors.push({beat:note.beat,progress:1});
+        const active=pauses.find(p=>currentBeat>=p.startBeat&&currentBeat<=p.endBeat);
+        if(active){progress=lens.slice(0,active.pointIndex).reduce((a,b)=>a+b,0)/totalLen;}
+        else{let idx=0;while(idx<anchors.length-2&&currentBeat>anchors[idx+1].beat)idx++;const a=anchors[idx],b=anchors[idx+1],q=(currentBeat-a.beat)/Math.max(.0001,b.beat-a.beat);progress=a.progress+(b.progress-a.progress)*q;}
+      }
+
+      const targetLen = totalLen * progress;
+      let acc = 0;
+      let segIdx = 0;
+      while(segIdx < lens.length - 1 && acc + lens[segIdx] < targetLen){
+        acc += lens[segIdx];
+        segIdx++;
+      }
+
+      const timeProgress = lens[segIdx] > 0 ? (targetLen - acc) / lens[segIdx] : 1;
+      const pattern=(note.pathSpeedProfiles||[])[segIdx]||'linear';
+      const k=4,den=Math.exp(k)-1;
+      const segProgress=pattern==='accelerate'?(Math.exp(k*timeProgress)-1)/den:pattern==='decelerate'?1-(Math.exp(k*(1-timeProgress))-1)/den:timeProgress;
+      const p0 = pts[segIdx], p1 = pts[segIdx+1], cp = note.pathControlPoints ? note.pathControlPoints[segIdx] : null;
+
+      if(cp){
+        const t = segProgress;
+        x = (1-t)*(1-t)*p0.x*canvasW + 2*(1-t)*t*cp.x*canvasW + t*t*p1.x*canvasW;
+        y = (1-t)*(1-t)*p0.y*canvasH + 2*(1-t)*t*cp.y*canvasH + t*t*p1.y*canvasH;
+      } else {
+        x = (p0.x + (p1.x - p0.x)*segProgress) * canvasW;
+        y = (p0.y + (p1.y - p0.y)*segProgress) * canvasH;
+      }
+    } else if(target && target.placement){
+      // 直線（出現位置からターゲット）
+      const tx = target.placement.x * canvasW;
+      const ty = target.placement.y * canvasH;
+      const startX = canvasW / 2;
+      const startY = canvasH / 2;
+      x = startX + (tx - startX) * progress;
+      y = startY + (ty - startY) * progress;
+    } else {
+      x = canvasW / 2;
+      y = canvasH / 2;
+    }
+
+    // 大きさ変化計算
+    const targetScalePct=note.targetScalePct??((target&&target.placement)?(target.placement.scale||1)*100:100);
+    let scalePct = targetScalePct;
+    if(note.scalePoints && note.scalePoints.length > 0){
+      const points = [{ beat: spawnBeat, scale: note.scalePoints[0].scale }, ...note.scalePoints.filter(p=>p.beat<note.beat), { beat: note.beat, scale: targetScalePct }];
+      points.sort((a,b) => a.beat - b.beat);
+
+      let pIdx = 0;
+      while(pIdx < points.length - 1 && points[pIdx+1].beat <= currentBeat){
+        pIdx++;
+      }
+      if(pIdx >= points.length - 1){
+        scalePct = points[points.length - 1].scale;
+      } else {
+        const p1 = points[pIdx], p2 = points[pIdx+1];
+        const span = p2.beat - p1.beat;
+        const ratio = span > 0 ? (currentBeat - p1.beat) / span : 1;
+        scalePct = p1.scale + (p2.scale - p1.scale) * scaleEase(ratio,p1.ease||'linear');
+      }
+    }
+
+    // 回転角度計算（判定タイミング時刻で紐付けターゲットの傾きと回転を合わせ、発生時刻の角度から逆算）
+    const bpm = +$('bpm').value || 120;
+    const rotSpeed = note.rotationSpeed || 0;
+    const dir = note.rotationDirection === 'left' ? -1 : 1;
+    const targetRotation = (target && target.placement) ? (target.placement.rotation || 0) : 0;
+    const remainingBeats = note.beat - currentBeat;
+    const rotationDeg = targetRotation - (remainingBeats * rotSpeed * dir);
+
+    return { x, y, scalePct, rotationDeg };
+  }
+
+  function getTargetStateAt(t, currentBeat){
+    if(!t.placement || t.hideBeat === null || currentBeat < t.beat || currentBeat > t.hideBeat) return null;
+
+    let alpha = 1, scaleMult = 1, opts = {};
+    const spawnDur = 0.4;
+    const spawnElapsedSec=beatToSeconds(currentBeat)-beatToSeconds(t.beat);
+    const hideRemainingSec=beatToSeconds(t.hideBeat)-beatToSeconds(currentBeat);
+
+    // 発生エフェクト
+    if(spawnElapsedSec < spawnDur){
+      const progress = Math.max(0,spawnElapsedSec / spawnDur);
+      const sType = t.spawnEffect || 'default';
+      if(sType === 'Fade'){
+        alpha = progress;
+      } else if(sType === '0%to100%'){
+        scaleMult = progress;
+      } else if(sType === 'Haze'){
+        alpha = progress;
+        opts.blur = (1 - progress) * 12;
+        opts.lineWidth = 2 + (1 - progress) * 6;
+      } else if(sType === 'Unfold'){
+        opts.scaleX = progress;
+      } else if(sType === 'Unfold-H'){
+        opts.scaleY = progress;
+      } else if(sType === 'Shrink-Fade'){
+        alpha = progress;
+        scaleMult = 1.2 - (0.2 * progress);
+      }
+    }
+
+    // 消失エフェクト
+    if(hideRemainingSec < spawnDur){
+      const progress = Math.max(0,hideRemainingSec / spawnDur); // 1 -> 0
+      const hType = t.hideEffect || 'default';
+      if(hType === 'Fade'){
+        alpha *= progress;
+      } else if(hType === '100%to0%'){
+        scaleMult *= progress;
+      } else if(hType === 'Haze'){
+        alpha *= progress;
+        opts.blur = (1 - progress) * 12;
+        opts.lineWidth = 2 + (1 - progress) * 6;
+      } else if(hType === 'Fold'){
+        opts.scaleX = (opts.scaleX ?? 1) * progress;
+      } else if(hType === 'Fold-H'){
+        opts.scaleY = (opts.scaleY ?? 1) * progress;
+      } else if(hType === 'Spread-Fade'){
+        alpha *= progress;
+        scaleMult *= (1.2 - 0.2 * progress);
+      }
+    }
+
+    return { alpha, scaleMult, opts };
+  }
+
+  function mainPreviewLoop(now){
+    if(!prevState.isPlaying) return;
+
+    if(!prevState.isPaused){
+      const elapsedSec = (now - prevState.startTime - prevState.pausedElapsed) / 1000;
+      const bpm = +$('bpm').value || 120;
+      prevState.currentBeat = secondsToBeat(beatToSeconds(prevState.startBeat) + elapsedSec);
+
+      // 終了判定（全ノーツおよび全ターゲットが終了）
+      const maxBeat = Math.max(
+        ...state.notes.map(n => n.beat),
+        ...state.targets.map(t => t.hideBeat || t.beat),
+        measureStartBeat(Math.min(measureCount(),laneMeasureStart(prevState.startLane)+(state.barsPerLane||4)))
+      );
+
+      if(prevState.currentBeat > maxBeat + 2){
+        prevState.isPlaying = false;
+        if(state.music) state.music.pause();
+        renderPreviewFrame();
+        return;
+      }
+
+      // オートプレイ判定処理
+      if(prevState.isAuto){
+        state.notes.forEach(note => {
+          if(!prevState.hitNotesSet.has(note.id) && prevState.currentBeat >= note.beat){
+            prevState.hitNotesSet.add(note.id);
+            prevState.combo++;
+            prevState.hitNoteId = note.id;
+            prevState.hitTargetId = note.targetId || '-';
+            updateHud();
+            beep();
+
+            const target = state.targets.find(t => t.id === note.targetId);
+            const canvas = $('previewCanvas');
+            const targetMap = new Map(state.targets.map(t => [t.id, t]));
+            const pos = getNotePosAndScale(note, note.beat, targetMap, canvas.width, canvas.height);
+
+            if(pos){
+              prevState.autoHits.push({
+                noteId: note.id,
+                targetId: note.targetId,
+                x: pos.x,
+                y: pos.y,
+                hitBeat: note.beat,
+                time: now
+              });
+
+              if(target && target.placement){
+                prevState.visualTaps.push({
+                  x: target.placement.x * canvas.width,
+                  y: target.placement.y * canvas.height,
+                  rotation: target.placement.rotation || 0,
+                  targetScale: target.placement.scale || 1,
+                  shape: target.shape,
+                  time: now
+                });
+              }
+            }
+          }
+        });
+      }
+    }
+
+    renderPreviewFrame();
+    prevState.animId = requestAnimationFrame(mainPreviewLoop);
+  }
+
+  function renderPreviewFrame(){
+    const canvas = $('previewCanvas');
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const now = performance.now();
+    const currentBeat = prevState.currentBeat;
+    const targetMap = new Map(state.targets.map(t => [t.id, t]));
+
+    // 1. ターゲットの描画
+    state.targets.forEach(t => {
+      const tState = getTargetStateAt(t, currentBeat);
+      if(!tState) return;
+
+      const tx = t.placement.x * w;
+      const ty = t.placement.y * h;
+      const baseSize = Math.max(10, 160 * (t.placement.scale || 1)) * (w / 1000);
+
+      ctx.save();
+      ctx.translate(tx, ty);
+      ctx.rotate((t.placement.rotation || 0) * Math.PI / 180);
+
+      drawTargetShape(ctx, t.shape, 0, 0, baseSize, tState.scaleMult, tState.alpha, {...tState.opts,fillColor:t.fillColor||'#111218',fillOpacity:Number(t.fillOpacity||0)});
+      ctx.restore();
+    });
+
+    // 2. ノーツ描画。IDの大きい順に重ね、同じIDではSN→TN→DN→CNで優先する。
+    const visibleNotes=state.notes.filter(n=>!prevState.hitNotesSet.has(n.id)).map(note=>({note,pos:getNotePosAndScale(note,currentBeat,targetMap,w,h)})).filter(x=>x.pos);
+    const drawNotePart=({note,pos},part)=>{
+      const size=Math.max(10,160*(pos.scalePct/100))*(w/1000); ctx.save(); ctx.translate(pos.x,pos.y); ctx.rotate(pos.rotationDeg*Math.PI/180);
+      ctx.beginPath();
+      if(note.shape==='circle') ctx.arc(0,0,size/2,0,Math.PI*2);
+      else if(note.shape==='triangle'){const ht=size*Math.sqrt(3)/2,rg=ht/3;ctx.moveTo(0,-2*rg);ctx.lineTo(-size/2,rg);ctx.lineTo(size/2,rg);ctx.closePath();}
+      else if(note.shape==='square') ctx.rect(-size/2,-size/2,size,size);
+      else if(note.shape==='star'){for(let i=0;i<5;i++){const a=(i*72-90)*Math.PI/180,r=size/2,x=Math.cos(a)*r,y=Math.sin(a)*r;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);const a2=(i*72+36-90)*Math.PI/180,r2=r*.4;ctx.lineTo(Math.cos(a2)*r2,Math.sin(a2)*r2);}ctx.closePath();}
+      if(part==='fill'&&(Number(note.fillOpacity)||0)>0){ctx.globalAlpha=Math.max(0,Math.min(1,Number(note.fillOpacity)/100));ctx.fillStyle=note.fillColor||'#111218';ctx.fill();}
+      if(part==='stroke'){ctx.globalAlpha=1;ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();}
+      ctx.restore();
+    };
+    const idNumber=n=>Number((n.id||'').match(/(\d+)$/)?.[1]||0), rank={S:0,T:1,D:2,C:3};
+    const ids=[...new Set(visibleNotes.map(x=>idNumber(x.note)))].sort((a,b)=>b-a);
+    for(const id of ids){
+      const group=visibleNotes.filter(x=>idNumber(x.note)===id);
+      for(const prefix of ['S','T','D','C']){
+        const layer=group.filter(x=>x.note.id.startsWith(prefix));
+        layer.forEach(x=>drawNotePart(x,'fill'));
+        layer.forEach(x=>drawNotePart(x,'stroke'));
+      }
+    }
+
+    // 3. タップ判定可視化 / ヒットエフェクト
+    if(prevState.visualTap){
+      prevState.visualTaps = prevState.visualTaps.filter(vt => now - vt.time < 300);
+      prevState.visualTaps.forEach(vt => {
+        const progress = (now - vt.time) / 300;
+        const alpha = 1 - progress;
+        const size = Math.max(10, 160 * vt.targetScale * (1 + progress * 0.3)) * (w / 1000);
+
+        ctx.save();
+        ctx.translate(vt.x, vt.y);
+        ctx.rotate(vt.rotation * Math.PI / 180);
+        ctx.fillStyle = `rgba(111, 220, 255, ${alpha * 0.4})`;
+
+        ctx.beginPath();
+        if(vt.shape === 'circle'){
+          ctx.arc(0, 0, size/2, 0, Math.PI*2);
+        } else if(vt.shape === 'triangle'){
+          const h_tri = size * Math.sqrt(3) / 2;
+          const r_g = h_tri / 3;
+          ctx.moveTo(0, -2 * r_g);
+          ctx.lineTo(-size / 2, r_g);
+          ctx.lineTo(size / 2, r_g);
+          ctx.closePath();
+        } else if(vt.shape === 'square'){
+          ctx.rect(-size/2, -size/2, size, size);
+        } else if(vt.shape === 'star'){
+          for(let i=0; i<5; i++){
+            const a = (i * 72 - 90) * Math.PI / 180;
+            const r = size/2;
+            const x = Math.cos(a) * r, y = Math.sin(a) * r;
+            if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+            const a2 = (i * 72 + 36 - 90) * Math.PI / 180;
+            const r2 = r * 0.4;
+            ctx.lineTo(Math.cos(a2)*r2, Math.sin(a2)*r2);
+          }
+          ctx.closePath();
+        }
+        ctx.fill();
+        ctx.restore();
+      });
+    }
+
+    // 4. 手動タップフィードバック (PERFECT / MISS)
+    prevState.manualFeedbacks = prevState.manualFeedbacks.filter(mf => now - mf.time < 600);
+    prevState.manualFeedbacks.forEach(mf => {
+      const progress = (now - mf.time) / 600;
+      const alpha = 1 - progress;
+      const dy = progress * 20;
+
+      ctx.save();
+      ctx.font = 'bold 20px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = mf.color === 'PERFECT' ? `rgba(255, 215, 0, ${alpha})` : `rgba(255, 71, 87, ${alpha})`;
+      ctx.fillText(mf.text, mf.x, mf.y - dy);
+      ctx.restore();
+    });
+
+    // 5. カウントダウン表示（再生前）
+    if(!prevState.isPlaying && prevState.countdownSec > 0){
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.fillRect(0, 0, w, h);
+      ctx.font = 'bold 72px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#6fdcff';
+      ctx.fillText(prevState.countdownSec, w / 2, h / 2);
+      ctx.restore();
+    }
+  }
+
+  function handlePreviewTap(e){
+    if(!prevState.isPlaying || prevState.isAuto) return;
+
+    const canvas = $('previewCanvas');
+    const rect = canvas.getBoundingClientRect();
+    const tapX = e.clientX - rect.left;
+    const tapY = e.clientY - rect.top;
+    const now = performance.now();
+    const currentBeat = prevState.currentBeat;
+    const bpm = +$('bpm').value || 120;
+    const beatSec = 60 / bpm;
+
+    const targetMap = new Map(state.targets.map(t => [t.id, t]));
+    let bestNote = null;
+    let minDiffSec = 999;
+
+    state.notes.forEach(note => {
+      if(prevState.hitNotesSet.has(note.id)) return;
+      const diffSec = Math.abs(beatToSeconds(currentBeat) - beatToSeconds(note.beat));
+
+      if(diffSec < 0.2 && diffSec < minDiffSec){ // ±200ms判定領域
+        minDiffSec = diffSec;
+        bestNote = note;
+      }
+    });
+
+    if(bestNote){
+      prevState.hitNotesSet.add(bestNote.id);
+      prevState.combo++;
+      prevState.hitNoteId = bestNote.id;
+      prevState.hitTargetId = bestNote.targetId || '-';
+      updateHud();
+      beep();
+
+      const target = state.targets.find(t => t.id === bestNote.targetId);
+      const label = minDiffSec < 0.08 ? 'PERFECT' : 'GREAT';
+
+      prevState.manualFeedbacks.push({
+        x: tapX,
+        y: tapY,
+        text: label,
+        color: 'PERFECT',
+        time: now
+      });
+
+      if(target && target.placement){
+        prevState.visualTaps.push({
+          x: target.placement.x * canvas.width,
+          y: target.placement.y * canvas.height,
+          rotation: target.placement.rotation || 0,
+          targetScale: target.placement.scale || 1,
+          shape: target.shape,
+          time: now
+        });
+      }
+    } else {
+      prevState.combo = 0;
+      updateHud();
+      prevState.manualFeedbacks.push({
+        x: tapX,
+        y: tapY,
+        text: 'MISS',
+        color: 'MISS',
+        time: now
+      });
+    }
+  }
+
+  function togglePreviewPause(){
+    if(!prevState.isPlaying) return;
+
+    if(prevState.isPaused){
+      prevState.isPaused = false;
+      prevState.pausedElapsed += (performance.now() - prevState.pauseTime);
+      $('prevBtnPause').textContent = '一時停止';
+      if(state.music) state.music.play().catch(()=>{});
+    } else {
+      prevState.isPaused = true;
+      prevState.pauseTime = performance.now();
+      $('prevBtnPause').textContent = '\u3000\u518d\u958b\u3000';
+      if(state.music) state.music.pause();
+    }
+  }
+
+  function closePreviewMode(){
+    prevState.isPlaying = false;
+    if(prevState.animId) cancelAnimationFrame(prevState.animId);
+    if(state.music) state.music.pause();
+    $('previewDialog').close();
+  }
+
+  // ===== 初期化 & イベント登録 =====
+  function init(){
+    $('addLane').onclick=()=>{ const before=snapshot(); state.measureCount+=state.barsPerLane;ensureMeasures(state.measureCount);state.laneCount=Math.ceil(state.measureCount/state.barsPerLane);commit(before);render(); };
+    $('barsPerLane').onchange=()=>{const n=Number($('barsPerLane').value);if(!Number.isInteger(n)||n<1||n>8){$('barsPerLane').value=state.barsPerLane;return;}const before=snapshot();state.barsPerLane=n;state.laneCount=Math.ceil(measureCount()/n);commit(before);render();};
+    $('saveMeasure').onclick=saveMeasureSettings;
+    $('measureBeats').oninput=renderMeasureBpmRows;
+    $('scalePacePattern').onchange=()=>{if(state.scalePaceAnimId)cancelAnimationFrame(state.scalePaceAnimId);drawScalePace();};$('scalePaceApply').onclick=()=>closeScalePace(true);$('scalePaceCancel').onclick=()=>closeScalePace(false);$('scalePaceClose').onclick=()=>closeScalePace(false);
+    $('measureBeats').oninput=renderMeasureBpmRows;
+    $('scalePacePattern').onchange=()=>{if(state.scalePaceAnimId)cancelAnimationFrame(state.scalePaceAnimId);drawScalePace();};$('scalePaceApply').onclick=()=>closeScalePace(true);$('scalePaceCancel').onclick=()=>closeScalePace(false);$('scalePaceClose').onclick=()=>closeScalePace(false);
+    $('modeGrid').onclick=()=>{ state.grid=state.grid===16?24:state.grid===24?32:16; render(); };
+    $('editMode').onclick=()=>{ state.mode=state.mode==='note'?'target':'note'; state.clipboard={note:null,target:null}; render(); };
+    $('undo').onclick=doUndo; $('redo').onclick=doRedo;
+    $('save').onclick=()=>{
+      const blob=new Blob([snapshot()],{type:'application/json'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='chart.json'; a.click();
+    };
+
+    $('audioLoad').onclick=()=>$('audioFile').click();
+    $('audioFile').onchange=e=>{
+      const f=e.target.files[0];
+      if(f){ state.music=new Audio(URL.createObjectURL(f)); toast('音声を読み込みました。'); }
+    };
+
+    $('chartLoad').onclick=()=>$('chartFile').click();
+    $('chartFile').onchange=e=>{
+      const f=e.target.files[0];
+      if(f){
+        const r=new FileReader();
+        r.onload=ev=>{ restore(ev.target.result); toast('譜面を読み込みました。'); };
+        r.readAsText(f);
+      }
+    };
+
+    $('musicVol').oninput=e=>{$('musicVolValue').value=e.target.value; if(state.music)state.music.volume=e.target.value/100;};
+    $('noteVol').oninput=e=>$('noteVolValue').value=e.target.value;
+    $('playAll').onclick=playAll;
+
+    // ダイアログ閉じイベント
+    document.querySelectorAll('dialog').forEach(d=>{
+      d.querySelectorAll('[data-close]').forEach(btn=>btn.onclick=()=>d.close());
+    });
+
+    $('addSameNote').onclick=()=>same('note');
+    $('switchSameNote').onclick=()=>switchSame('note');
+    $('copyNote').onclick=()=>copyObject('note'); $('pasteNote').onclick=()=>pasteObject('note');
+    $('deleteNote').onclick=()=>deleteCurrentObject('note');
+    $('noteTarget').onchange=saveNote; $('rotationDirection').onchange=saveNote; $('rotationSpeed').onchange=saveNote;
+    $('noteFillColor').onchange=saveNote; $('noteFillOpacity').onchange=saveNote;
+
+    $('addSameTarget').onclick=()=>same('target');
+    $('switchSameTarget').onclick=()=>switchSame('target');
+    $('copyTarget').onclick=()=>copyObject('target'); $('pasteTarget').onclick=()=>pasteObject('target');
+    $('noteFillOpacity').oninput=e=>$('noteFillValue').value=`${e.target.value}%`;
+    $('targetFillOpacity').oninput=e=>$('targetFillValue').value=`${e.target.value}%`;
+    $('targetFillOpacity').onchange=saveTargetFill; $('targetFillColor').onchange=saveTargetFill;
+    $('deleteTarget').onclick=()=>deleteCurrentObject('target');
+
+    $('btnSpawnBeat').onclick=()=>{
+      const s=state.selected;
+      if(!s||s.kind!=='note')return;
+      suppressClick=false;
+      $('noteDialog').close();
+      state.spawnEditing=s.obj;
+      render();
+    };
+
+    $('targetExpiry').onclick=()=>{
+      const s=state.selected;
+      if(!s||s.kind!=='target')return;
+      suppressClick=false;
+      $('targetDialog').close();
+      state.expiryEditing=s.obj;
+      render();
+    };
+
+    $('targetTransform').onclick=openPlacement;
+    $('confirmPlacement').onclick=()=>closePlacement(true);
+    $('cancelPlacement').onclick=()=>closePlacement(false);
+
+    const pScreen=$('placementScreen');
+    pScreen.onpointerdown=handlePlacementScreenPointerDown;
+    pScreen.onpointermove=moveTransform;
+    pScreen.onpointerup=()=>state.transformGesture=null;
+
+    // 軌道エディター
+    $('btnOpenPath').onclick=openPathEditor;
+    $('pathModePointer').onclick=()=>setPathEditLayer('pointer');
+    $('pathModePath').onclick=()=>setPathEditLayer('path');
+    $('pathPickEndpoint').onclick=()=>{setPathEditLayer('pointer');state.endpointSelection=true;state.pausePointSelection=false;state.speedSelectMode=false;toast('終点にするポインタを選択してください。');};
+    $('pathPickPause').onclick=()=>{setPathEditLayer('pointer');state.pausePointSelection=true;state.endpointSelection=false;state.speedSelectMode=false;toast('一時停止するポインタを選択してください。');};
+    $('pathSpeedEdit').onclick=()=>{setPathEditLayer('path');state.speedSelectMode=true;state.endpointSelection=false;state.pausePointSelection=false;toast('速度を調整するパスを選択してください。');};
+    $('speedPattern').onchange=()=>{if(state.speedAnimId)cancelAnimationFrame(state.speedAnimId);drawSpeedDialog();};$('speedApply').onclick=()=>closeSpeedDialog(true);$('speedCancel').onclick=()=>closeSpeedDialog(false);$('speedClose').onclick=()=>closeSpeedDialog(false);
+    $('confirmPath').onclick=confirmPath;
+    $('cancelPath').onclick=cancelPath;
+    $('pathTrashBtn').onclick=deleteSelectedPathPoint;
+
+    const pathContainer = $('pathScreenContainer');
+    pathContainer.onpointerdown = handlePathPointerDown;
+    pathContainer.onpointermove = handlePathPointerMove;
+    pathContainer.onpointerup = handlePathPointerUp;
+    pathContainer.onpointercancel = handlePathPointerUp;
+    pathContainer.oncontextmenu = e=>e.preventDefault();
+    $('pathZoom').onchange=()=>{const v=Number($('pathZoom').value);state.pathZoom=Math.max(10,Math.min(500,Number.isFinite(v)?v:100));$('pathZoom').value=state.pathZoom;renderPathCanvas();};
+    $('pathZoomReset').onclick=()=>{state.pathZoom=100;state.pathPanX=0;state.pathPanY=0;$('pathZoom').value=100;renderPathCanvas();};
+
+    // キーボードショートカット (ポインタ削除)
+    window.addEventListener('keydown', e => {
+      if(e.key === 'Delete' || e.key === 'Backspace'){
+        if($('pathDialog').open){
+          deleteSelectedPathPoint(e);
+        }
+      }
+    });
+
+    // 大きさ変化設定ボタン
+    $('btnScaleSelect').onclick = startScaleSelect;
+
+    // 発生・消失エフェクト設定モーダル
+    $('targetEffects').onclick = openEffectModal;
+    $('cancelEffect').onclick = () => closeEffectModal(false);
+    $('confirmEffect').onclick = () => closeEffectModal(true);
+    $('closeEffectCross').onclick = () => closeEffectModal(false);
+
+    // 譜面再現モーダル
+    $('prevBtnPause').onclick = togglePreviewPause;
+    $('prevBtnRestart').onclick = resetAndStartSequence;
+    $('prevBtnAutoPlay').onclick = () => {
+      prevState.isAuto = !prevState.isAuto;
+      $('prevBtnAutoPlay').textContent = `オートプレイ${prevState.isAuto ? 'ON' : 'OFF'}`;
+    };
+    $('prevBtnVisualTap').onclick = () => {
+      prevState.visualTap = !prevState.visualTap;
+      $('prevBtnVisualTap').textContent = `タップ判定可視化: ${prevState.visualTap ? 'ON' : 'OFF'}`;
+    };
+    $('prevBtnClose').onclick = closePreviewMode;
+    $('previewScreenContainer').onpointerdown = handlePreviewTap;
+
+    render();
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

@@ -131,13 +131,26 @@
 <!-- 軌道エディターモーダル -->
 <dialog id="pathDialog" class="path-dialog">
   <div class="path-wrap">
-    <div class="path-toolbar">
+    <div class="path-toolbar" style="flex-wrap:wrap; gap:8px;">
       <span>操作モード:</span>
       <button id="pathModePointer" class="path-mode-btn active">ポインタ操作</button>
       <button id="pathModePath" class="path-mode-btn">パス編集</button>
       <button id="pathPickEndpoint" class="path-mode-btn">終点ポインタを選択</button>
       <button id="pathPickPause" class="path-mode-btn">一時停止ポインタを選択/編集</button>
       <button id="pathSpeedEdit" class="path-mode-btn">スピード調整</button>
+      <div class="path-library-dropdown" style="position:relative; display:inline-block;">
+        <button id="pathLibraryBtn" class="path-mode-btn">ライブラリ ▾</button>
+        <div id="pathLibraryMenu" style="display:none; position:absolute; top:100%; left:0; z-index:100; background:#1c2230; border:1px solid #485165; border-radius:6px; padding:6px; min-width:140px; box-shadow:0 4px 12px rgba(0,0,0,0.5);">
+          <button id="pathLibRegisterBtn" class="btn-full" style="text-align:left; padding:6px 10px; margin-bottom:4px; font-size:12px;">ライブラリ登録</button>
+          <button id="pathLibCiteBtn" class="btn-full" style="text-align:left; padding:6px 10px; font-size:12px;">ライブラリ引用</button>
+        </div>
+      </div>
+      <button id="pathAngleLockBtn" class="path-mode-btn" style="margin-left:8px;">角度ロック: OFF</button>
+      <span style="margin-left:8px; font-size:12px;">回転軸:</span>
+      <select id="pathPivotMode" style="background:#11151e; border:1px solid #485165; color:#fff; border-radius:4px; padding:2px 6px; font-size:12px;">
+        <option value="relative">相対維持</option>
+        <option value="fixed">固定</option>
+      </select>
       <span class="muted" id="pathModeDesc" style="margin-left:auto;">ポインタの追加・移動・削除を行えます。</span>
     </div>
     <div id="pathScreenContainer" class="path-screen-container" title="中央ボタンのドラッグで移動。Shift+ドラッグで紐付けターゲットを移動できます。">
@@ -236,7 +249,8 @@
     mode:'note', grid:16, laneCount:4, measureCount:16, barsPerLane:4, barBeats:Array(16).fill(4), measureEditing:null, notes:[], targets:[], undo:[], redo:[], selected:null, clipboard:{note:null,target:null}, music:null, playTimer:null, playStartTime:0, playStartBeat:0, playEndBeat:0, playLaneIndex:null, 
     expiryEditing:null, expiryPending:null, spawnEditing:null, spawnPending:null, placementTemp:null, triggerPulseTargetId:null,
     maxSeq:{ CN:0, TN:0, DN:0, SN:0, CT:0, TT:0, DT:0, ST:0 },
-    pathPoints:[], pathEndIndex:null, pathControlPoints:{}, pathTargetPlacementTemp:null, pathPausesTemp:[], pathSpeedProfilesTemp:[], endpointSelection:false, pausePointSelection:false, speedSelectMode:false, selectedSpeedSegment:-1, speedAnimId:null, speedPatternTemp:'linear', pauseRangeEditing:null, selectedPointIdx:-1, selectedControlPointIdx:-1, pathGesture:null, pathEditLayer:'pointer', pathZoom:100, pathPanX:0, pathPanY:0, // 'pointer' or 'path'
+    pathPoints:[], pathEndIndex:null, pathControlPoints:{}, pathTargetPlacementTemp:null, pathPausesTemp:[], pathSpeedProfilesTemp:[], endpointSelection:false, pausePointSelection:false, speedSelectMode:false, selectedSpeedSegment:-1, speedAnimId:null, speedPatternTemp:'linear', pauseRangeEditing:null, selectedPointIdx:-1, selectedControlPointIdx:-1, pathGesture:null, pathEditLayer:'pointer', pathZoom:100, pathPanX:0, pathPanY:0,
+    pathLibrary:[], pathLibRegisterSelection:[], pathLibMode:null, pathAngleLocked:false, pathLockedAngleRad:null, pathPivotMode:'relative',
     scaleEditing:null, scalePointsTemp:[], scalePaceIndex:-1, scalePaceTemp:'linear', scalePaceAnimId:null,
     effectAnimId:null
   };
@@ -694,14 +708,12 @@
   function closeScalePace(save){if(state.scalePaceAnimId)cancelAnimationFrame(state.scalePaceAnimId);state.scalePaceAnimId=null;if(save&&state.scalePacePoint)state.scalePacePoint.ease=$('scalePacePattern').value;state.scalePacePoint=null;$('scalePaceDialog').close();render();}
 
   function shapeSvg(shape, scale){
-    const baseStrokeWidth = 2;
     const effectiveStrokeWidth = 2;
-    // 三角形の重心(y=57)を中心に合わせるためdy=7シフト
     const paths={
       circle:'<circle cx="50" cy="50" r="42"/>',
-      triangle:'<path d="M50 13 L95.03 91 L4.97 91 Z"/>',
+      triangle:'<path d="M50 8 L86.37 71 L13.63 71 Z"/>',
       square:'<rect x="9" y="9" width="82" height="82"/>',
-      star:'<path d="M50 5 L61 36 L94 36 L67 55 L77 88 L50 69 L23 88 L33 55 L6 36 L39 36 Z"/>'
+      star:'<path d="M50 8 L59.88 38.39 L91.84 38.39 L65.98 57.21 L75.86 87.61 L50 68.79 L24.14 87.61 L34.02 57.21 L8.16 38.39 L40.12 38.39 Z"/>'
     };
     return `<svg viewBox="0 0 100 100" aria-label="target"><g fill="none" stroke="#ffffff" stroke-width="${effectiveStrokeWidth}">${paths[shape]}</g></svg>`;
   }
@@ -713,7 +725,7 @@
     const scene=document.createElement('canvas');scene.id='placementContextCanvas';scene.width=screen.clientWidth||800;scene.height=screen.clientHeight||450;screen.append(scene);
     const selectedTarget=state.selected?.kind==='target'?state.selected.obj:null;drawSceneAtBeat(scene.getContext('2d'),scene.width,scene.height,selectedTarget?.beat||0,selectedTarget?.id||null,selectedTarget?.id||null);
     if(!p)return;
-    const basePx=Math.max(10,160*p.scale)*(screen.clientWidth/1000),shape=state.selected.obj.shape,boxHeight=shape==='triangle'?basePx*Math.sqrt(3)/2:basePx;const box=document.createElement('div');box.className='transform-box';box.style.left=`${p.x*100}%`;box.style.top=`${p.y*100}%`;box.style.width=`${basePx}px`;box.style.height=`${boxHeight}px`;box.style.transform=`translate(-50%,-50%) rotate(${p.rotation}deg)`;const target=document.createElement('canvas');target.className='preview-target';target.width=Math.max(1,Math.round(basePx));target.height=Math.max(1,Math.round(basePx));target.style.position='absolute';target.style.left='50%';target.style.top='50%';target.style.width=`${basePx}px`;target.style.height=`${basePx}px`;target.style.transform='translate(-50%,-50%)';drawTargetShape(target.getContext('2d'),shape,basePx/2,basePx/2,basePx,1,1,{fillColor:state.selected.obj.fillColor||'#111218',fillOpacity:Number(state.selected.obj.fillOpacity||0)});box.append(target);['nw','ne','se','sw'].forEach(name=>{const h=document.createElement('span');h.className=`transform-handle ${name}`;h.onpointerdown=e=>startTransform(e,'scale');box.append(h);});box.onpointerdown=e=>{if(e.target.classList.contains('transform-handle'))return;startTransform(e,'move');};screen.append(box);updatePlacementInfo();
+    const basePx=Math.max(10,160*p.scale)*(screen.clientWidth/1000),shape=state.selected.obj.shape,boxWidth=basePx,boxHeight=basePx;const box=document.createElement('div');box.className='transform-box';box.style.left=`${p.x*100}%`;box.style.top=`${p.y*100}%`;box.style.width=`${boxWidth}px`;box.style.height=`${boxHeight}px`;box.style.transform=`translate(-50%,-50%) rotate(${p.rotation}deg)`;const target=document.createElement('canvas');target.className='preview-target';target.width=Math.max(1,Math.round(basePx));target.height=Math.max(1,Math.round(basePx));target.style.position='absolute';target.style.left='50%';target.style.top='50%';target.style.width=`${basePx}px`;target.style.height=`${basePx}px`;target.style.transform='translate(-50%,-50%)';drawTargetShape(target.getContext('2d'),shape,basePx/2,basePx/2,basePx,1,1,{fillColor:state.selected.obj.fillColor||'#111218',fillOpacity:Number(state.selected.obj.fillOpacity||0)});box.append(target);['nw','ne','se','sw'].forEach(name=>{const h=document.createElement('span');h.className=`transform-handle ${name}`;h.onpointerdown=e=>startTransform(e,'scale');box.append(h);});box.onpointerdown=e=>{if(e.target.classList.contains('transform-handle'))return;startTransform(e,'move');};screen.append(box);updatePlacementInfo();
   }
   
   function handlePlacementScreenPointerDown(e){
@@ -873,13 +885,290 @@
   // ===== 軌道エディター機能 =====
   function setPathEditLayer(layer){
     state.endpointSelection=false;state.pausePointSelection=false;state.speedSelectMode=false;
+    state.pathLibMode=null;state.pathLibRegisterSelection=[];
     state.pathEditLayer = layer;
     $('pathModePointer').classList.toggle('active', layer === 'pointer');
     $('pathModePath').classList.toggle('active', layer === 'path');
+    $('pathLibraryBtn').classList.remove('active');
     $('pathModeDesc').textContent = layer === 'pointer' 
       ? 'ポインタの追加・移動・削除を行えます。' 
       : '軌道（青線）をクリック/ドラッグして、曲線化できます。';
     renderPathCanvas();
+  }
+
+  function toggleLibraryMenu(e){
+    e.stopPropagation();
+    const menu = $('pathLibraryMenu');
+    menu.style.display = (menu.style.display === 'none' || !menu.style.display) ? 'block' : 'none';
+  }
+
+  function closeLibraryMenu(){
+    $('pathLibraryMenu').style.display = 'none';
+  }
+
+  function startPathLibraryRegister(){
+    closeLibraryMenu();
+    state.endpointSelection=false;state.pausePointSelection=false;state.speedSelectMode=false;
+    state.pathLibMode = 'register';
+    state.pathLibRegisterSelection = [];
+    $('pathModePointer').classList.remove('active');
+    $('pathModePath').classList.remove('active');
+    $('pathLibraryBtn').classList.add('active');
+    $('pathModeDesc').textContent = '登録するパス（隣接する連続セグメント）を順にクリックして選択してください。「確定」で保存します。';
+    renderPathCanvas();
+  }
+
+  function startPathLibraryCite(){
+    closeLibraryMenu();
+    if(state.pathLibrary.length === 0){
+      toast('登録されているライブラリ項目がありません。');
+      return;
+    }
+    state.endpointSelection=false;state.pausePointSelection=false;state.speedSelectMode=false;
+    state.pathLibMode = 'cite';
+    state.pathLibRegisterSelection = [];
+    $('pathModePointer').classList.remove('active');
+    $('pathModePath').classList.remove('active');
+    $('pathLibraryBtn').classList.add('active');
+    $('pathModeDesc').textContent = '引用する項目を選択し、起点ポインタを指定して適用してください。';
+    showLibraryCiteModal();
+  }
+
+  function confirmLibraryRegister(){
+    if(state.pathLibRegisterSelection.length === 0){
+      toast('パスが選択されていません。');
+      return;
+    }
+    const segs = [...state.pathLibRegisterSelection].sort((a,b)=>a-b);
+    // Check adjacency
+    for(let i=0; i<segs.length-1; i++){
+      if(segs[i+1] !== segs[i] + 1){
+        toast('隣り合って連続接続しているパスのみを1つの登録単位として選択してください。');
+        return;
+      }
+    }
+
+    const minSeg = segs[0];
+    const maxSeg = segs[segs.length - 1];
+    const startPointIdx = minSeg;
+    const endPointIdx = maxSeg + 1;
+
+    const subPoints = state.pathPoints.slice(startPointIdx, endPointIdx + 1).map(p => ({ x: p.x, y: p.y }));
+    const subControlPoints = {};
+    for(let s=minSeg; s<=maxSeg; s++){
+      if(state.pathControlPoints[s]){
+        subControlPoints[s - minSeg] = structuredClone(state.pathControlPoints[s]);
+      }
+    }
+
+    // Calculate segment lengths
+    const subSegmentLengths = [];
+    let totalLen = 0;
+    const canvas = $('pathCanvas');
+    const w = canvas.width || 800, h = canvas.height || 450;
+
+    for(let i=0; i<subPoints.length-1; i++){
+      const pStart = subPoints[i];
+      const pEnd = subPoints[i+1];
+      const cp = subControlPoints[i];
+      let segLen = 0;
+      if(cp){
+        let prev = { x: pStart.x * w, y: pStart.y * h };
+        for(let t=0.05; t<=1.0; t+=0.05){
+          const bx = (1-t)*(1-t)*pStart.x*w + 2*(1-t)*t*cp.x*w + t*t*pEnd.x*w;
+          const by = (1-t)*(1-t)*pStart.y*h + 2*(1-t)*t*cp.y*h + t*t*pEnd.y*h;
+          segLen += Math.hypot(bx - prev.x, by - prev.y);
+          prev = { x: bx, y: by };
+        }
+      } else {
+        segLen = Math.hypot((pEnd.x - pStart.x)*w, (pEnd.y - pStart.y)*h);
+      }
+      subSegmentLengths.push(segLen);
+      totalLen += segLen;
+    }
+
+    const newItem = {
+      id: 'lib_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+      name: `ライブラリ項目 ${state.pathLibrary.length + 1}`,
+      points: subPoints,
+      controlPoints: subControlPoints,
+      segmentLengths: subSegmentLengths,
+      totalLength: totalLen
+    };
+
+    state.pathLibrary.push(newItem);
+    toast(`ライブラリ項目「${newItem.name}」を登録しました。`);
+    setPathEditLayer('pointer');
+  }
+
+  function showLibraryCiteModal(){
+    // Remove existing cite modal if any
+    let modal = $('pathLibCiteModal');
+    if(modal) modal.remove();
+
+    modal = document.createElement('dialog');
+    modal.id = 'pathLibCiteModal';
+    modal.className = 'effect-dialog';
+    modal.style.width = '420px';
+
+    let listHtml = '';
+    state.pathLibrary.forEach((item, idx) => {
+      listHtml += `<div class="lib-item-row" data-id="${item.id}" style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid #2e384d; cursor:pointer; background:#11151e; margin-bottom:4px; border-radius:4px;">
+        <span class="lib-item-name" data-id="${item.id}" title="ダブルクリックで名前変更" style="font-weight:bold; color:#6fdcff;">${item.name}</span>
+        <span style="font-size:12px; color:#a0aec0;">パス数: ${item.points.length - 1} (${Math.round(item.totalLength)}px)</span>
+      </div>`;
+    });
+
+    modal.innerHTML = `
+      <div class="modal-head"><h2>ライブラリ引用</h2><button id="pathLibCiteClose">×</button></div>
+      <div class="effect-wrap" style="padding:12px;">
+        <div style="font-size:12px; color:#a0aec0; margin-bottom:8px;">引用するライブラリ項目を選択してください（名前をダブルクリックで編集可能）。</div>
+        <div id="pathLibItemList" style="max-height:220px; overflow-y:auto; margin-bottom:12px;">
+          ${listHtml}
+        </div>
+        <div style="margin-top:8px;">
+          <label style="font-size:12px;">接続起点ポインタ:</label>
+          <select id="pathLibAttachPointSelect" style="background:#11151e; border:1px solid #485165; color:#fff; padding:4px; border-radius:4px; width:100%; margin-top:4px;">
+            ${state.pathPoints.map((pt, idx) => `<option value="${idx}">ポインタ ${idx+1} (X:${Math.round((pt.x-0.5)*200)}, Y:${Math.round((0.5-pt.y)*200)})</option>`).join('')}
+            <option value="new">起点にせず新規独立配置</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button id="pathLibCiteCancel">キャンセル</button>
+        <button id="pathLibCiteApply" style="background:#37a8ff; color:#fff;">軌道に追加</button>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+    modal.showModal();
+
+    let selectedItemId = state.pathLibrary[0]?.id || null;
+
+    const highlightSelected = () => {
+      modal.querySelectorAll('.lib-item-row').forEach(row => {
+        const id = row.getAttribute('data-id');
+        row.style.border = (id === selectedItemId) ? '2px solid #37a8ff' : '1px solid #2e384d';
+        row.style.background = (id === selectedItemId) ? '#1c2230' : '#11151e';
+      });
+    };
+    highlightSelected();
+
+    modal.querySelectorAll('.lib-item-row').forEach(row => {
+      row.onclick = (e) => {
+        if(e.target.classList.contains('lib-item-name-input')) return;
+        selectedItemId = row.getAttribute('data-id');
+        highlightSelected();
+      };
+    });
+
+    // Double-click name editing
+    modal.querySelectorAll('.lib-item-name').forEach(nameSpan => {
+      nameSpan.ondblclick = (e) => {
+        e.stopPropagation();
+        const itemId = nameSpan.getAttribute('data-id');
+        const item = state.pathLibrary.find(x => x.id === itemId);
+        if(!item) return;
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = item.name;
+        input.className = 'lib-item-name-input';
+        input.style.cssText = 'background:#000; color:#fff; border:1px solid #37a8ff; padding:2px 4px; font-size:12px; border-radius:3px;';
+
+        const saveName = () => {
+          const newName = input.value.trim();
+          if(newName){
+            item.name = newName;
+            nameSpan.textContent = newName;
+          } else {
+            nameSpan.textContent = item.name;
+          }
+        };
+
+        input.onblur = saveName;
+        input.onkeydown = (ev) => {
+          if(ev.key === 'Enter') saveName();
+        };
+
+        nameSpan.replaceWith(input);
+        input.focus();
+      };
+    });
+
+    $('pathLibCiteClose').onclick = () => { modal.close(); modal.remove(); setPathEditLayer('pointer'); };
+    $('pathLibCiteCancel').onclick = () => { modal.close(); modal.remove(); setPathEditLayer('pointer'); };
+
+    $('pathLibCiteApply').onclick = () => {
+      if(!selectedItemId){
+        toast('項目を選択してください。');
+        return;
+      }
+      const item = state.pathLibrary.find(x => x.id === selectedItemId);
+      if(!item){
+        toast('選択された項目が存在しません。');
+        return;
+      }
+
+      const attachVal = $('pathLibAttachPointSelect').value;
+      const copiedItem = structuredClone(item);
+
+      if(attachVal === 'new'){
+        // Append as new disconnected or connected sequence
+        const baseIdx = state.pathPoints.length;
+        copiedItem.points.forEach(pt => state.pathPoints.push(structuredClone(pt)));
+        Object.keys(copiedItem.controlPoints).forEach(k => {
+          state.pathControlPoints[baseIdx + Number(k)] = structuredClone(copiedItem.controlPoints[k]);
+        });
+      } else {
+        const attachIdx = Number(attachVal);
+        const startPt = state.pathPoints[attachIdx];
+        const itemStartPt = copiedItem.points[0];
+        const dx = startPt.x - itemStartPt.x;
+        const dy = startPt.y - itemStartPt.y;
+
+        // Shift copied item points so first point aligns with attachPt
+        const shiftedPoints = copiedItem.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+
+        // Append points excluding the first one (which matches attachPt)
+        const baseIdx = state.pathPoints.length - 1; // last point before adding
+        // Actually, we append from index 1 of shiftedPoints to attachIdx? Or attach at attachIdx?
+        // Let's attach at attachIdx: points after attachIdx in current path stay intact, we append shiftedPoints[1..] starting from attachIdx.
+        // To preserve existing paths without deleting/corrupting, we append shiftedPoints[1..] to pathPoints end, or insert right after attachIdx.
+        // Inserting right after attachIdx is natural for connection!
+        const insertIdx = attachIdx + 1;
+        const numNewPts = shiftedPoints.length - 1;
+
+        // Shift existing control points at or after insertIdx
+        const updatedCPs = {};
+        Object.keys(state.pathControlPoints).forEach(kStr => {
+          const k = Number(kStr);
+          if(k < attachIdx){
+            updatedCPs[k] = state.pathControlPoints[k];
+          } else {
+            updatedCPs[k + numNewPts] = state.pathControlPoints[k];
+          }
+        });
+
+        // Insert new control points
+        Object.keys(copiedItem.controlPoints).forEach(kStr => {
+          const k = Number(kStr);
+          const cp = copiedItem.controlPoints[k];
+          updatedCPs[attachIdx + k] = { x: cp.x + dx, y: cp.y + dy };
+        });
+
+        // Insert new points into pathPoints
+        state.pathPoints.splice(insertIdx, 0, ...shiftedPoints.slice(1));
+        state.pathControlPoints = updatedCPs;
+      }
+
+      state.pathEndIndex = state.pathPoints.length - 1;
+      modal.close();
+      modal.remove();
+      toast(`ライブラリ項目「${item.name}」を引用しました。`);
+      setPathEditLayer('pointer');
+      renderPathCanvas();
+    };
   }
 
   function openPathEditor(){
@@ -975,7 +1264,9 @@
         const pEnd = pts[i+1];
         const cp = state.pathControlPoints[i];
         const hasPause=state.pathPausesTemp.some(p=>p.pointIndex===i||p.pointIndex===i+1);
-        ctx.strokeStyle=hasPause?'#48d27a':(state.pathEditLayer==='path'?'#6fdcff':'#37a8ff');
+        const isLibSelected = state.pathLibRegisterSelection.includes(i);
+        ctx.strokeStyle=isLibSelected?'#ffcc00':hasPause?'#48d27a':(state.pathEditLayer==='path'?'#6fdcff':'#37a8ff');
+        ctx.lineWidth=(isLibSelected||state.pathEditLayer==='path')?4:2;
 
         ctx.beginPath();
         ctx.moveTo(pStart.x * w, pStart.y * h);
@@ -1156,6 +1447,55 @@
 
     const pointHitRadius = 24;
 
+    // --- 【ライブラリ登録モード】 セグメント選択処理 ---
+    if(state.pathLibMode === 'register'){
+      if(state.pathPoints.length >= 2){
+        const clickPx = { x: x * w, y: y * h };
+        let closestSeg = -1;
+        let minDist = 30;
+
+        for(let i = 0; i < state.pathPoints.length - 1; i++){
+          const p0 = state.pathPoints[i], p1 = state.pathPoints[i+1];
+          const cp = state.pathControlPoints[i];
+          let dist = 999;
+          if(cp){
+            let prevP = { x: p0.x * w, y: p0.y * h };
+            for(let t=0.05; t<=1.0; t+=0.05){
+              const bx = (1-t)*(1-t)*p0.x*w + 2*(1-t)*t*cp.x*w + t*t*p1.x*w;
+              const by = (1-t)*(1-t)*p0.y*h + 2*(1-t)*t*cp.y*h + t*t*p1.y*h;
+              const d = Math.hypot(clickPx.x - bx, clickPx.y - by);
+              if(d < dist) dist = d;
+              prevP = { x: bx, y: by };
+            }
+          } else {
+            const x0 = p0.x * w, y0 = p0.y * h, x1 = p1.x * w, y1 = p1.y * h;
+            const dx = x1 - x0, dy = y1 - y0, lenSq = dx*dx + dy*dy;
+            let projX = x0, projY = y0;
+            if(lenSq > 0){
+              let t = Math.max(0, Math.min(1, ((clickPx.x - x0)*dx + (clickPx.y - y0)*dy) / lenSq));
+              projX = x0 + t*dx; projY = y0 + t*dy;
+            }
+            dist = Math.hypot(clickPx.x - projX, clickPx.y - projY);
+          }
+          if(dist < minDist){
+            minDist = dist;
+            closestSeg = i;
+          }
+        }
+
+        if(closestSeg !== -1){
+          const idx = state.pathLibRegisterSelection.indexOf(closestSeg);
+          if(idx >= 0){
+            state.pathLibRegisterSelection.splice(idx, 1);
+          } else {
+            state.pathLibRegisterSelection.push(closestSeg);
+          }
+          renderPathCanvas();
+        }
+      }
+      return;
+    }
+
     // --- 【パス操作レイヤー】 パス曲線化の引っぱり・選択操作 ---
     if(state.pathEditLayer === 'path'){
       // 既存の特殊ポインタ(黄色丸)のタップ判定
@@ -1288,7 +1628,45 @@
 
     if(state.pathGesture.type==='target'&&state.pathTargetPlacementTemp){state.pathTargetPlacementTemp.placement.x=x;state.pathTargetPlacementTemp.placement.y=y;
     } else if(state.pathGesture.type === 'point' && state.pathEditLayer === 'pointer'){
-      state.pathPoints[state.pathGesture.index] = { x, y };
+      const ptIdx = state.pathGesture.index;
+      const oldPt = state.pathPoints[ptIdx];
+      const dx = x - oldPt.x;
+      const dy = y - oldPt.y;
+
+      let targetX = x;
+      let targetY = y;
+
+      // 角度ロック適用 (終点ポインタ移動時かつ角度ロックON)
+      if(state.pathAngleLocked && ptIdx === state.pathPoints.length - 1 && state.pathPoints.length >= 2){
+        const whitePt = state.pathPoints[state.pathPoints.length - 2];
+        const rx = (x - 0.5) * 200;
+        const ry = (0.5 - y) * 200;
+        const wx = (whitePt.x - 0.5) * 200;
+        const wy = (whitePt.y - 0.5) * 200;
+        const curDx = rx - wx;
+        const curDy = ry - wy;
+        const dist = Math.hypot(curDx, curDy);
+
+        const lockedRad = state.pathLockedAngleRad ?? 0;
+        const newRx = wx + dist * Math.cos(lockedRad);
+        const newRy = wy + dist * Math.sin(lockedRad);
+
+        targetX = newRx / 200 + 0.5;
+        targetY = 0.5 - newRy / 200;
+      }
+
+      state.pathPoints[ptIdx] = { x: targetX, y: targetY };
+
+      // 回転軸維持ロジック:
+      // モードA (relative): 始点ポインタ (index 0) が移動した場合、回転軸（紐付けターゲットまたは他ポインタとの相対位置）および制御点・関連ノーズを平行移動
+      if(ptIdx === 0 && state.pathPivotMode === 'relative'){
+        // もし紐付けターゲットが存在すれば、ターゲット位置も同じ (dx, dy) だけ平行移動
+        if(state.pathTargetPlacementTemp && state.pathTargetPlacementTemp.placement){
+          state.pathTargetPlacementTemp.placement.x += dx;
+          state.pathTargetPlacementTemp.placement.y += dy;
+        }
+      }
+      // モードB (fixed): 始点・終点ポインタ移動にかかわらず回転軸の座標（ターゲット等の絶対位置）は一切変化しない (何もしない)
     } else if(state.pathGesture.type === 'control' && state.pathEditLayer === 'path'){
       state.pathControlPoints[state.pathGesture.segmentIndex] = { x, y };
     }
@@ -1327,6 +1705,10 @@
   }
 
   function confirmPath(){
+    if(state.pathLibMode === 'register'){
+      confirmLibraryRegister();
+      return;
+    }
     const s = state.selected;
     if(!s || s.kind !== 'note') return;
     const before = snapshot();
@@ -1403,11 +1785,10 @@
     if(shape === 'circle'){
       ctx.arc(0, 0, size/2, 0, Math.PI*2);
     } else if(shape === 'triangle'){
-      const h_tri = size * Math.sqrt(3) / 2;
-      const r_g = h_tri / 3;
-      ctx.moveTo(0, -2 * r_g);
-      ctx.lineTo(-size / 2, r_g);
-      ctx.lineTo(size / 2, r_g);
+      const r = size / 2;
+      ctx.moveTo(0, -r);
+      ctx.lineTo((Math.sqrt(3)/2) * r, r / 2);
+      ctx.lineTo(-(Math.sqrt(3)/2) * r, r / 2);
       ctx.closePath();
     } else if(shape === 'square'){
       ctx.rect(-size/2, -size/2, size, size);
@@ -1429,7 +1810,7 @@
   }
 
   function traceShapePath(ctx,shape,size){
-    ctx.beginPath();if(shape==='circle')ctx.arc(0,0,size/2,0,Math.PI*2);else if(shape==='triangle'){const h=size*Math.sqrt(3)/2,rg=h/3;ctx.moveTo(0,-2*rg);ctx.lineTo(-size/2,rg);ctx.lineTo(size/2,rg);ctx.closePath();}else if(shape==='square')ctx.rect(-size/2,-size/2,size,size);else if(shape==='star'){for(let i=0;i<5;i++){const a=(i*72-90)*Math.PI/180,r=size/2,x=Math.cos(a)*r,y=Math.sin(a)*r;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);const a2=(i*72+36-90)*Math.PI/180,r2=r*.4;ctx.lineTo(Math.cos(a2)*r2,Math.sin(a2)*r2);}ctx.closePath();}
+    ctx.beginPath();if(shape==='circle')ctx.arc(0,0,size/2,0,Math.PI*2);else if(shape==='triangle'){const r=size/2;ctx.moveTo(0,-r);ctx.lineTo((Math.sqrt(3)/2)*r,r/2);ctx.lineTo(-(Math.sqrt(3)/2)*r,r/2);ctx.closePath();}else if(shape==='square')ctx.rect(-size/2,-size/2,size,size);else if(shape==='star'){for(let i=0;i<5;i++){const a=(i*72-90)*Math.PI/180,r=size/2,x=Math.cos(a)*r,y=Math.sin(a)*r;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);const a2=(i*72+36-90)*Math.PI/180,r2=r*.4;ctx.lineTo(Math.cos(a2)*r2,Math.sin(a2)*r2);}ctx.closePath();}
   }
   function drawSceneAtBeat(ctx,w,h,beat,selectedTargetId=null,excludeTargetId=null,effectPreview=null){
     const targets=new Map(state.targets.map(t=>[t.id,t]));
@@ -2037,11 +2418,10 @@
         if(vt.shape === 'circle'){
           ctx.arc(0, 0, size/2, 0, Math.PI*2);
         } else if(vt.shape === 'triangle'){
-          const h_tri = size * Math.sqrt(3) / 2;
-          const r_g = h_tri / 3;
-          ctx.moveTo(0, -2 * r_g);
-          ctx.lineTo(-size / 2, r_g);
-          ctx.lineTo(size / 2, r_g);
+          const r = size / 2;
+          ctx.moveTo(0, -r);
+          ctx.lineTo((Math.sqrt(3)/2) * r, r / 2);
+          ctx.lineTo(-(Math.sqrt(3)/2) * r, r / 2);
           ctx.closePath();
         } else if(vt.shape === 'square'){
           ctx.rect(-size/2, -size/2, size, size);
@@ -2273,6 +2653,34 @@
     $('pathPickEndpoint').onclick=()=>{setPathEditLayer('pointer');state.endpointSelection=true;state.pausePointSelection=false;state.speedSelectMode=false;toast('終点にするポインタを選択してください。');};
     $('pathPickPause').onclick=()=>{setPathEditLayer('pointer');state.pausePointSelection=true;state.endpointSelection=false;state.speedSelectMode=false;toast('一時停止するポインタを選択してください。');};
     $('pathSpeedEdit').onclick=()=>{setPathEditLayer('path');state.speedSelectMode=true;state.endpointSelection=false;state.pausePointSelection=false;toast('速度を調整するパスを選択してください。');};
+    $('pathLibraryBtn').onclick=toggleLibraryMenu;
+    $('pathLibRegisterBtn').onclick=startPathLibraryRegister;
+    $('pathLibCiteBtn').onclick=startPathLibraryCite;
+    $('pathPivotMode').onchange=()=>{ state.pathPivotMode = $('pathPivotMode').value; };
+    $('pathAngleLockBtn').onclick=()=>{
+      state.pathAngleLocked = !state.pathAngleLocked;
+      const btn = $('pathAngleLockBtn');
+      if(state.pathAngleLocked){
+        if(state.pathPoints.length >= 2){
+          const redPt = state.pathPoints[state.pathPoints.length - 1];
+          const whitePt = state.pathPoints[state.pathPoints.length - 2];
+          const rx = (redPt.x - 0.5) * 200, ry = (0.5 - redPt.y) * 200;
+          const wx = (whitePt.x - 0.5) * 200, wy = (0.5 - whitePt.y) * 200;
+          state.pathLockedAngleRad = Math.atan2(ry - wy, rx - wx);
+          btn.textContent = '角度ロック: ON';
+          btn.classList.add('active');
+          toast('角度を固定しました。距離（長さ）のみ調整可能です。');
+        } else {
+          state.pathAngleLocked = false;
+          toast('角度ロックを行うには2つ以上のポインタが必要です。');
+        }
+      } else {
+        btn.textContent = '角度ロック: OFF';
+        btn.classList.remove('active');
+        toast('角度ロックを解除しました。');
+      }
+    };
+    window.addEventListener('click', closeLibraryMenu);
     $('speedPattern').onchange=()=>{if(state.speedAnimId)cancelAnimationFrame(state.speedAnimId);drawSpeedDialog();};$('speedApply').onclick=()=>closeSpeedDialog(true);$('speedCancel').onclick=()=>closeSpeedDialog(false);$('speedClose').onclick=()=>closeSpeedDialog(false);
     $('confirmPath').onclick=confirmPath;
     $('cancelPath').onclick=cancelPath;
